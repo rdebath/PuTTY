@@ -204,15 +204,29 @@ int init_ucs(struct unicode_data *ucsdata, char *linecharset,
     /*
      * Set up unitab_scoacs. The SCO Alternate Character Set is
      * simply CP437.
+     *
+     * Except ... for this codeset characters 1..31 and 127 are
+     * replaced by glyph characters common to all MS OEM codepages.
      */
     for (i = 0; i < 256; i++) {
+	static int oemcp_glyph_overlay[] = {
+	    0x2302, 0x263a, 0x263b, 0x2665, 0x2666, 0x2663, 0x2660, 0x2022,
+	    0x25d8, 0x25cb, 0x25d9, 0x2642, 0x2640, 0x266a, 0x266b, 0x263c,
+	    0x25b6, 0x25c0, 0x2195, 0x203c, 0x00b6, 0x00a7, 0x25ac, 0x21a8,
+	    0x2191, 0x2193, 0x2192, 0x2190, 0x221f, 0x2194, 0x25b2, 0x25bc
+	};
 	char c[1];
-        const char *p;
+	const char *p;
 	wchar_t wc[1];
 	int len;
 	c[0] = i;
 	p = c;
 	len = 1;
+	if (i >= 1 && i < 32)
+	    ucsdata->unitab_scoacs[i] = oemcp_glyph_overlay[i];
+	else if (i == 127)
+	    ucsdata->unitab_scoacs[i] = oemcp_glyph_overlay[0];
+	else
 	if (1 == charset_to_unicode(&p, &len, wc, 1, CS_CP437, NULL, L"", 0))
 	    ucsdata->unitab_scoacs[i] = wc[0];
 	else
