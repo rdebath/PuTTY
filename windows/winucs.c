@@ -516,6 +516,29 @@ void init_ucs(Conf *conf, struct unicode_data *ucsdata)
     }
 #endif
 
+    /* MS CP125X do NOT actually have any high control characters,
+     * the MS tables show some of them but MS will replace them by
+     * any new characters that may be useful in the future.
+     *
+     * So this condition checks for character U+009B being available
+     * and disables them all if it's not.
+     *
+     * This then allows an isprint() function to safely use a simple
+     * range for displayable windows character sets. eg:
+     *
+     * export LESSCHARSET=dos
+     * echo 'set isprint=@,128-255' >> .exrc
+     * echo 'set isprint=@,128-255' >> .vimrc
+     *
+     */
+
+    if (ucsdata->unitab_line[128+27] != 128+27) {
+	for(i=128; i<159; i++) {
+	    if (ucsdata->unitab_line[i] == i)
+		ucsdata->unitab_line[i] = 0xFFFD;
+	}
+    }
+
     /* VT100 graphics - NB: Broken for non-ascii CP's */
     memcpy(ucsdata->unitab_xterm, ucsdata->unitab_line,
 	   sizeof(ucsdata->unitab_xterm));
