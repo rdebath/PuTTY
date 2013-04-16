@@ -3881,7 +3881,7 @@ void do_cursor(Context ctx, int x, int y, wchar_t *text, int len,
     }
 
     fnt_width = char_width = font_width * (1 + (lattr != LATTR_NORM));
-    if (attr & ATTR_WIDE)
+    if ((attr & ATTR_WIDE) || len == 2)
 	char_width *= 2;
     x *= fnt_width;
     y *= font_height;

@@ -5523,7 +5523,7 @@ static termchar *term_bidi_line(Terminal *term, struct termline *ldata,
  */
 static void do_paint(Terminal *term, Context ctx, int may_optimise)
 {
-    int i, j, our_curs_y, our_curs_x;
+    int i, j, our_curs_y, our_curs_x, our_curs_x_too;
     int rv, cursor;
     pos scrpos;
     wchar_t *ch;
@@ -5598,6 +5598,7 @@ static int lastrun = 0;
 
 	unlineptr(ldata);
     }
+    our_curs_x_too = -1; /* Second cursor position for DBCS. */
 
     /*
      * If the cursor is not where it was last time we painted, and
@@ -5778,11 +5779,17 @@ static int dimmap[] = { 59,88,28,100,18,90,30,259 };
 	    } else if (term->disptext[i]->chars[j].attr & ATTR_NARROW)
 		tattr |= ATTR_NARROW;
 
-	    if (i == our_curs_y && j == our_curs_x) {
+	    if (i == our_curs_y &&
+		(j == our_curs_x || j == our_curs_x_too)) {
 		tattr |= cursor;
 		term->curstype = cursor;
 		term->dispcursx = j;
 		term->dispcursy = i;
+
+		if (term->ucsdata->dbcs_screenfont &&
+		    DIRECT_FONT(tchar) &&
+		    is_dbcs_leadbyte(term->ucsdata->font_codepage,(BYTE)tchar))
+			our_curs_x_too = our_curs_x + 1;
 	    }
 
 	    /* FULL-TERMCHAR */
