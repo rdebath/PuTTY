@@ -1,0 +1,1161 @@
+#!/usr/bin/awk -Wexec
+#
+# This program sends colour scheme definitions to a PuTTY or xterm.
+# The terminal can still be configured even if we're running inside
+# tmux or screen.
+#
+# Some colour schemes are generated or hardcoded into the program.
+# But normally a file would be read.
+# The file format can be a PuTTY unix session file, a regdump of a
+# Windows PuTTY session, a MinTTY file or a special xrdb include file.
+#
+# Many files in the latter format can be found at ...
+# https://github.com/mbadolato/iTerm2-Color-Schemes/tree/master/xrdb
+#
+true , /; exec awk -f "$0" -- "$@" ; exit; / {}
+#
+BEGIN{
+    # Which to set
+    dodefaults = 1;
+    xtermseq = 1;
+    linuxseq = 1;
+    puttyseq = 1;
+    itermseq = 0;
+
+    if (ENVIRON["TERM"] ~ "linux.*")
+	linuxseq = !(puttyseq=xtermseq=itermseq=0);
+    if (ENVIRON["TERM"] ~ ".*putty.*")
+	puttyseq = !(linuxseq=xtermseq=itermseq=0);
+
+    # if (ENVIRON["TERM"] ~ "xterm.*")
+    #	Sorry, everyone sets this and they LIE.
+
+    # What to print
+    quiet = 0;
+    testmode = 0;
+    disable_conceal = 0;
+
+    # Putty Default colours ...
+    l3 = 255; l2 = 187; l1 = 85; l0 = 0;
+    vgatweak = xtermtweak = 0;
+    xtermcursor = 0;
+    def_white = -1;
+
+    reset = 0;
+    initset = 1;
+    whitebg = 0;
+    screen = 0;
+    mono = 0;
+    errored = 0;
+    coloursknown = 0;
+    fname = "";
+    terminfo = 0;
+    vimterminfo = 0;
+    puttyterminfo = 0;
+    mintty = 0;
+    twelvebits = 0;
+    eightbits = 0;
+    copydflts = 0;
+
+    if ( ENVIRON["STY"] != "" )
+	screen = 1;
+
+    if ( ENVIRON["TMUX"] != "" )
+	tmux = 1;
+
+    for(ar=1; ar<ARGC; ar++) {
+	av = ARGV[ar];
+	if (av == "-h") {
+	    quiet = 1;
+	    testmode = 1;
+	    print "Set Linux or PuTTY colour palette"
+	    print "       Default sets the normal PuTTY colour map"
+	    print "       The map can be extracted from a 'reg' or settings file"
+	    print "  -p   PuTTY colours"
+	    print "  -q   Quiet"
+	    print "  -t   Don't change colours, just show the test screen."
+	    print "  -16  Linux console, 16 colours only"
+	    print "  -12  Reduce pallet entries to 12bits (from 24)"
+	    print "  -x   Default XTerm map"
+	    print "  -3   XTerm's map with the tweaks removed."
+	    print "  -w   A selection using the Web safe colours"
+	    print "  -v   The VGA default set."
+	    print "  -sol A solorized like version of the ANSI colours"
+	    print "  -b   High brightness colours"
+	    print "  -m   Medium bright (Like VGA without the brown)"
+	    print "  -2   Half bright, Windows static colours."
+	    print "  -d   Dim colours"
+	    print "  -dd  Very dim colours"
+	    print "  -rv  Reverse video, swap default BG and FG."
+	    print "  -cd  Copy defaults from first 16"
+	    print "  -gc  Green cursor"
+	    print "  -mc  Magenta cursor"
+	    print "  -dg  Default colour green"
+	    print "  -mono Flatten the palette to monochrome"
+	    print "  -nocon Do not display any concealed text"
+	    print "  -s   Add prefix to send through screen(1)"
+	    print "  -xterm Send XTerm sequences only."
+	    print "  -linux Send Linux sequences only (16 main colours only)."
+	    print "  -putty Send PuTTY sequences only."
+	    print "  -iterm Send iTerm2 sequences only."
+	    print "  -terminfo Output a terminfo colour definition."
+	    print "  -puttyinit Output a terminfo init definition."
+	    print "  -puttyset Output a putty settings file definition."
+	    print "  -vim Output a VIM terminfo colour definition."
+	    print "  -mintty Output a MinTTY colour definition."
+	}
+	else if (av == "-q") quiet = 1;
+	else if (av == "-r") reset = 1;
+	else if (av == "-t") testmode = 1;
+	else if (av == "-16") dodefaults = 0;
+	else if (av == "-12") twelvebits = 1;
+	else if (av == "-8") eightbits = 1;
+	else if (av == "-s") screen = 1;
+	else if (av == "-rv") whitebg = !whitebg;
+	else if (av == "-mc") mc = 1;
+	else if (av == "-gc") gc = 1;
+	else if (av == "-dg") dg = 1;
+	else if (av == "-mg") mg = 1;
+	else if (av == "-xc") xtermcursor = 1;
+	else if (av == "-mono") mono = 1;
+	else if (av == "-xterm") xtermseq = !(puttyseq=linuxseq=itermseq=0);
+	else if (av == "-linux") linuxseq = !(puttyseq=xtermseq=itermseq=0);
+	else if (av == "-putty") puttyseq = !(linuxseq=xtermseq=itermseq=0);
+	else if (av == "-iterm") itermseq = !(puttyseq=linuxseq=xtermseq=0);
+	else if (av == "-gw") gw = 1;
+	else if (av == "-bw") bw = 1;
+	else if (av == "-rw") rw = 1;
+	else if (av == "-cd") copydflts = 1;
+	else if (av == "-nocon") disable_conceal = 1;
+	else if (av == "-terminfo") {
+	    terminfo = 1;
+	    puttyseq=linuxseq=xtermseq=itermseq=0;
+	    quiet=1;
+	}
+	else if (av == "-vim") {
+	    vimterminfo = 1;
+	    puttyseq=linuxseq=xtermseq=itermseq=0;
+	    quiet=1;
+	}
+	else if (av == "-puttyinit") {
+	    puttyterminfo = 1;
+	    puttyseq=linuxseq=xtermseq=itermseq=0;
+	    quiet=1;
+	}
+	else if (av == "-puttyset") {
+	    puttysetting = 1;
+	    puttyseq=linuxseq=xtermseq=itermseq=0;
+	    quiet=1;
+	}
+	else if (av == "-mintty") {
+	    mintty = 1;
+	    puttyseq=linuxseq=xtermseq=itermseq=0;
+	    quiet=1;
+	}
+
+	else if (av == "-x") {	    # XTerm
+	    # The primaries are full and the red3, green3 related levels.
+	    l3 = 255; l2 = 205; l1 = 0; l0 = 0;
+	    # Several tweaks to make the colours look better.
+	    xterm_blue = 238;
+	    xterm_ltblack = 127;
+	    def_white = 229;
+	    xterm_blue_boost = 92;
+	    xtermtweak = 1;
+	    xtermcursor = 1;
+	    # whitebg = !whitebg; # This is set by the desktop not xterm.
+	}
+
+	else if (av == "-3") {	    # XTerm colour3 base.
+	    l3 = 255; l2 = 205; l1 = 0; l0 = 0;
+	}
+	else if (av == "-b") {	    # Bright
+	    l3 = 255; l2 = 255; l1 = 85; l0 = 0;
+	}
+	else if (av == "-m") {	    # Medium
+	    l3 = 255; l2 = 170; l1 = 85; l0 = 0;
+	}
+	else if (av == "-2") {	    # 50%
+	    l3 = 255; l2 = 128; l1 = 0; l0 = 0;
+	}
+	else if (av == "-d") {	    # Dim
+	    l3 = 255; l2 = 102; l1 = 51; l0 = 0;
+	}
+	else if (av == "-dd") {    # Very Dim
+	    l3 = 255; l2 = 51; l1 = 51; l0 = 0;
+	}
+	else if (av == "-p") {	    # PuTTY
+	    l3 = 255; l2 = 187; l1 = 85; l0 = 0;
+	}
+	else if (av == "-w") {	    # Websafe
+	    l3 = 255; l2 = 153; l1 = 51; l0 = 0;
+	}
+	else if (av == "-v") {	    # VGA Default
+	    l3 = 255; l2 = 170; l1 = 85; l0 = 0;
+	    vgatweak = 1;
+	}
+	else if (av == "-st") {	    # Atari ST
+	    l3 = 255; l2 = 255; l1 = 109; l0 = 0;
+	    def_white = 182;
+	}
+	else if (av == "-sol") {    # Solarized ansi
+	    l3 = 255; l2 = 170; l1 = 85; l0 = 0;
+	    fakefile = "sol";
+	}
+	else if (substr(av,1,1) == "-") { # Problem
+	    print "Unknown Option ", av;
+	    errored = 1;
+	} else {
+	    got_file = 1;
+	    break;
+	}
+
+	ARGV[ar] = "";
+    }
+    if (!got_file) {ARGC=2; ARGV[1] = "/dev/null";}
+
+    if (linuxseq && !puttyseq) { dodefaults = 0; disable_conceal = 1; }
+
+    if (!reset)
+    {
+	for(b = 0; b<2; b++) for(g = 0; g<2; g++) for(r = 0; r<2; r++)
+	{
+	    colnum = r * 1 + g * 2 + b * 4;
+
+	    red = r * (l2 - l0) + l0;
+	    green = g * (l2 - l0) + l0;
+	    blue = b * (l2 - l0) + l0;
+
+	    if (vgatweak && colnum == 3) green = l1;
+	    if (xtermtweak && colnum == 4) blue = xterm_blue;
+	    if (def_white >= 0 && colnum == 7) red = green = blue = def_white;
+
+	    set_palette(colnum, red, green, blue);
+	    if (!whitebg) {
+		if (colnum == 0) set_palette(18, red, green, blue);
+		if (colnum == 7) set_palette(16, red, green, blue);
+	    } else {
+		if (colnum == 0) set_palette(16, red, green, blue);
+		if (colnum == 7) set_palette(19, red, green, blue);
+	    }
+
+	    red = r * (l3 - l1) + l1;
+	    green = g * (l3 - l1) + l1;
+	    blue = b * (l3 - l1) + l1;
+
+	    if (xtermtweak && colnum == 0) red = green = blue = xterm_ltblack;
+	    if (xtermtweak && colnum == 4) red = green = xterm_blue_boost;
+
+	    set_palette(colnum+8, red, green, blue);
+	    if (!whitebg) {
+		if (colnum == 0) set_palette(19, red, green, blue);
+		if (colnum == 7) set_palette(17, red, green, blue);
+	    } else {
+		if (colnum == 0) set_palette(17, red, green, blue);
+		if (colnum == 7) set_palette(18, red, green, blue);
+	    }
+	}
+    }
+    initset = 0;
+
+    if (fakefile == "sol")
+	import_solarized_ansi()
+}
+
+END{
+    initset = 1;
+    if (has_file && ccount < 8) {
+	print "Too few colour entries found in file"
+	errored = 1;
+    }
+    if (errored) exit;
+
+    if (!reset) {
+	# Make bright versions
+	fix_sixteen();
+
+	# Copy defaults from VGA16
+	if (copydflts) {
+	    if (!has_file || !pal_ok[16])
+		set_palette(16, pal_red[7], pal_grn[7], pal_blu[7]);
+	    if (!has_file || !pal_ok[17])
+		set_palette(17, pal_red[15], pal_grn[15], pal_blu[15]);
+	    if (!has_file || !pal_ok[18])
+		set_palette(18, pal_red[0], pal_grn[0], pal_blu[0]);
+	    if (!has_file || !pal_ok[19])
+		set_palette(19, pal_red[8], pal_grn[8], pal_blu[8]);
+	    if (!has_file || !pal_ok[20])
+		set_palette(20, pal_red[0], pal_grn[0], pal_blu[0]);
+	    if (!has_file || !pal_ok[21])
+		set_palette(21, pal_red[15], pal_grn[15], pal_blu[15]);
+	    if (!has_file || !pal_ok[22])
+		set_palette(22, pal_red[14], pal_grn[14], pal_blu[14]);
+	    if (!has_file || !pal_ok[23])
+		set_palette(23, pal_red[0], pal_grn[0], pal_blu[0]);
+	}
+
+	# Forground
+	if (dg) set_palette(16, 64, 220, 64);
+	if (dg) set_palette(17, 192, 255, 192);
+	if (mg) set_palette(16, 192, 220, 192);
+
+	# Background
+	if (rw||gw||bw)
+	    set_palette(18, 32*rw, 32*gw, 32*bw);
+
+	# Cursor colours
+	if ((!xtermcursor && !copydflts) || mc || gc) {
+	    xtermcursor = 0
+	    set_palette(20, l0, l0, l0);
+	    if (mc)
+		set_palette(21, l3, l0, l3);
+	    else
+		set_palette(21, l0, l3, l0);
+	}
+
+	if (xtermcursor && (pal_set[16] && pal_set[18])) {
+	    set_palette(20, pal_red[18], pal_grn[18], pal_blu[18]);
+	    set_palette(21, pal_red[16], pal_grn[16], pal_blu[16]);
+	}
+    }
+
+    if (mono) flatten_palette();
+    if (twelvebits) quantize12bit();
+    if (eightbits) quantize8bit();
+
+    if (terminfo) output_terminfo();
+    if (vimterminfo) output_vimterminfo();
+    if (puttyterminfo) output_puttyterminfo();
+    if (puttysetting) output_puttysetting();
+    if (mintty) output_mintty();
+
+    # Reset palette to configuration.
+    if (!testmode) {
+	if (reset) {
+	    coloursknown = 0;
+
+	    # Linux/PuTTY colour reset
+	    if (linuxseq || puttyseq) {
+		if (screen == 1)
+		    printf "\033P\033]R\033\\"
+		else if (tmux == 1)
+		    printf "\033Ptmux;\033\033]R\033\033\\\033\\"
+		else
+		    printf "\033]R\033\\"
+	    }
+
+	    # XTerm reset, just the ones we set though.
+	    if (xtermseq) {
+		if (screen == 1) {
+		    printf "\033P\033]104;\007\033\\";
+		    printf "\033P\033]110;\007\033\\";
+		    printf "\033P\033]111;\007\033\\";
+		    printf "\033P\033]112;\007\033\\";
+		    printf "\033P\033]117;\007\033\\";
+		    printf "\033P\033]119;\007\033\\";
+		} else if (tmux == 1) {
+		    printf "\033Ptmux;";
+		    printf "\033\033]104\033\033\\";
+		    printf "\033\033]110\033\033\\";
+		    printf "\033\033]111\033\033\\";
+		    printf "\033\033]112\033\033\\";
+		    printf "\033\033]117\033\033\\";
+		    printf "\033\033]119\033\033\\";
+		    printf "\033\\"
+		} else {
+		    printf "\033]104\033\\";
+		    printf "\033]110\033\\";
+		    printf "\033]111\033\\";
+		    printf "\033]112\033\\";
+		    printf "\033]117\033\\";
+		    printf "\033]119\033\\";
+		}
+	    }
+	}
+
+	output_palette();
+	if (!quiet) print ""
+    }
+
+    if (!quiet) colour_chart();
+}
+
+function colour_chart(      colnum,r,g,b,ansi,red,green,blue,fgcol,s,red2,green2,blue2) {
+    bname=fname; sub(".*/", "", bname);
+    print "\033[m\033[H\033[2J\033[1;4mColour summary chart\033[m",bname
+    if(coloursknown) {
+	printf "\033[1;54H\033[4m%s\033[m", "Normal"
+	printf "\033[8C\033[1;4m%s\033[m", "Bright"
+	printf "\n"
+    }
+    for(b = 0; b<2; b++) for(g = 0; g<2; g++) for(r = 0; r<2; r++)
+    {
+	colnum = r * 1 + g * 2 + b * 4;
+
+	printf "\033[m"
+	printf "%2d ", colnum
+
+	printf " \033[0;%dm###\033[m  ", colnum
+
+	if (colnum == 0) printf "\033[47m"; else printf "\033[40m";
+	printf "\033[3%dm ### \033[40;39;9%dm ### \033[m ", colnum, colnum
+
+	printf "\033[;3%dm ### \033[39;9%dm ### \033[m ", colnum, colnum
+
+	if (colnum != 7) printf "\033[47m"; else printf "\033[40m";
+	printf "\033[3%dm ### \033[47;39;9%dm ### \033[m ", colnum, colnum
+
+	ansi="KRGYBMCW";
+	printf "  %c%c%c %c", r?"R":"-", g?"G":"-", b?"B":"-", substr(ansi,colnum+1,1)
+
+	red = pal_red[colnum];
+	green = pal_grn[colnum];
+	blue = pal_blu[colnum];
+	if(coloursknown) printf " (%3d,%3d,%3d)", red, green, blue;
+
+	red = pal_red[colnum+8];
+	green = pal_grn[colnum+8];
+	blue = pal_blu[colnum+8];
+	if(coloursknown) {
+	    if (pal_red[colnum] != red || pal_grn[colnum] != green || pal_blu[colnum] != blue)
+		printf " (%3d,%3d,%3d)", red, green, blue;
+	    else {
+		printf " \033[4m(%3d,%3d,%3d)\033[0m", red, green, blue;
+	    }
+	}
+	printf "\n";
+    }
+
+    if (coloursknown && dodefaults) {
+	for (colnum=0; colnum<2; colnum++) {
+
+	    if (!pal_set[colnum] && !pal_set[colnum+1]) continue;
+
+	    if (colnum == 0) printf "%-35s", "Foreground Curs,Dflt,Bold"
+	    if (colnum == 1) printf "%-35s", "Background Curs,Dflt,Bold"
+
+	    red = pal_red[colnum+20];
+	    green = pal_grn[colnum+20];
+	    blue = pal_blu[colnum+20];
+	    if (pal_set[colnum*2+16])
+		printf " (%3d,%3d,%3d)", red, green, blue;
+	    else if (pal_set[colnum*2+16] || pal_set[colnum*2+16+1])
+		printf "%14s", ""
+
+	    red = pal_red[colnum*2+16];
+	    green = pal_grn[colnum*2+16];
+	    blue = pal_blu[colnum*2+16];
+	    if (pal_set[colnum*2+16])
+		printf " (%3d,%3d,%3d)", red, green, blue;
+	    else if (pal_set[colnum*2+16+1])
+		printf "%14s", ""
+
+	    red2 = pal_red[colnum*2+16+1];
+	    green2 = pal_grn[colnum*2+16+1];
+	    blue2 = pal_blu[colnum*2+16+1];
+	    if (pal_set[colnum*2+16+1]) {
+		printf " ";
+		if (red==red2 && green==green2 && blue==blue2)
+		    printf "\033[4m"
+		printf "(%3d,%3d,%3d)", red2, green2, blue2;
+		printf "\033[m"
+	    }
+
+	    printf "\n";
+	}
+    } else
+	print "\n"
+
+    printf "\033[1mBOLD:"
+    for(i=0; i<8; i++) {
+	printf "\033[0m \033[1;3%dm###", i;
+    }
+    printf "\033[0m  ";
+
+    printf "\033[4mULINE:"
+    for(i=0; i<8; i++) {
+	printf "\033[0m \033[4;3%dm###", i;
+    }
+    printf "\033[0m";
+    printf "\n"
+
+    printf "256 colour mode    GREY: "
+
+    if (!twelvebits) {
+	colnum = 16; fgcol = "38;5;231";
+	printf "\033[48;5;%dm", colnum
+	printf "\033[%sm", fgcol;
+	if (disable_conceal)
+	    printf "  ";
+	else
+	    printf "\033[8m%02x", colnum
+	printf "\033[0m";
+	for (colnum = 232; colnum < 256; colnum++) {
+	    if (colnum < (256+232)/2) fgcol = "38;5;231"; else fgcol = "38;5;16";
+	    printf "\033[48;5;%dm", colnum
+	    printf "\033[%sm", fgcol;
+	    if (disable_conceal)
+		printf "  ";
+	    else
+		printf "\033[8m%02x", colnum
+	    printf "\033[0m";
+	}
+	colnum = 231; fgcol = "38;5;16";
+	printf "\033[48;5;%dm", colnum
+	printf "\033[%sm", fgcol;
+	if (disable_conceal)
+	    printf "  ";
+	else
+	    printf "\033[8m%02x", colnum
+	printf "\033[0m";
+	printf "\n";
+    } else {
+	for (colnum = 231; colnum < 257; colnum++) {
+	    if (colnum == 231) g = 0;
+	    else if (colnum == 256) g = 255;
+	    else g = (colnum-232) * 10 + 8;
+
+	    g = 17*int((g+8)/17);
+
+	    printf "\033[48;2;%d;%d;%dm", g,g,g;
+	    printf "  ";
+	    printf "\033[0m";
+	}
+	printf "\n"
+    }
+
+    printf "    \033[48;5;8mFirst-16:"
+    for(i=0; i<16; i++) {
+	printf "\033[0m \033[48;5;%dm\033[38;5;%dm###", (i>7?0:8), i;
+    }
+    printf "\033[10;0m";
+    printf "\n"
+
+    if (!twelvebits) {
+	for (green = 0; green < 6; green++) {
+	    for (red = 0; red < 6; red++) {
+		for (blue = 0; blue < 6; blue++) {
+		    colnum = 16 + (red * 36) + (green * 6) + blue;
+		    if (red*6+green*10+blue*4 < 50) fgcol = "38;5;231"; else fgcol = "38;5;16";
+		    printf "\033[48;5;%dm", colnum
+		    printf "\033[%sm", fgcol;
+		    if (disable_conceal)
+			printf "  ";
+		    else
+			printf "\033[8m%02x", colnum
+		    printf "\033[0m";
+		}
+		printf "\033[0m "
+	    }
+	    printf "\n"
+	}
+    } else {
+	for (green = 0; green < 6; green++) {
+	    for (red = 0; red < 6; red++) {
+		for (blue = 0; blue < 6; blue++) {
+
+		    r = red ? red * 40 + 55 : 0;
+		    g = green ? green * 40 + 55 : 0;
+		    b = blue ? blue * 40 + 55 : 0;
+
+		    r = 17*int((r+8)/17);
+		    g = 17*int((g+8)/17);
+		    b = 17*int((b+8)/17);
+
+		    printf "\033[48;2;%d;%d;%dm", r,g,b;
+		    printf "  ";
+		    printf "\033[0m";
+		}
+		printf " "
+	    }
+	    printf "\n"
+	}
+    }
+
+    if (eightbits) {
+	if (twelvebits)
+	    print "8/12 bit colour"
+	else
+	    print "8 bit colour"
+    } else if (twelvebits) {
+	print "12 bit colour"
+    } else {
+	print "24 bit colour"
+    }
+    s="/\\/\\/\\/\\/\\"; s=s s s s s s s s;
+    for (colnum = 0; colnum<77; colnum++) {
+	r = 255-(colnum*255/76);
+	g = (colnum*510/76);
+	b = (colnum*255/76);
+	if (g>255) g = 510-g;
+
+	if (twelvebits) {
+	    r = 17*int((r+8)/17);
+	    g = 17*int((g+8)/17);
+	    b = 17*int((b+8)/17);
+	}
+	red2 = 255-r; green2 = 255-g; blue2 = 255-b;
+
+	if (eightbits) {
+	    xterm256(r,g,b);
+	    r = return_red;
+	    g = return_grn
+	    b = return_blu;
+
+	    xterm256(red2,green2,blue2);
+	    red2 = return_red;
+	    green2 = return_grn
+	    blue2 = return_blu;
+	}
+
+	printf "\033[48;2;%d;%d;%dm", r,g,b;
+	printf "\033[38;2;%d;%d;%dm", red2,green2,blue2;
+	printf "%s\033[0m", substr(s,colnum+1,1);
+    }
+    printf "\n";
+}
+
+function set_palette(colnum,red,green,blue) {
+    if (!dodefaults && colnum >= 16) return;
+    # Debug/Verbose
+    # printf "Set palette %d (%d) = %d,%d,%d\n", colnum, initset, red,green,blue
+
+    pal_set[colnum] = 1;
+    pal_red[colnum] = red;
+    pal_grn[colnum] = green;
+    pal_blu[colnum] = blue;
+    if (!initset) pal_ok[colnum] = 1;
+}
+
+function fix_sixteen(	colnum,grey,gray,red,green,blue) {
+    if (!has_file) return;
+
+    if (!pal_ok[7]) {
+	grey = 0;
+	for(colnum=0; colnum<7; colnum++) {
+	    if (!pal_ok[colnum]) continue;
+	    if (pal_red[colnum] > grey) grey = pal_red[colnum];
+	    if (pal_grn[colnum] > grey) grey = pal_grn[colnum];
+	    if (pal_blu[colnum] > grey) grey = pal_blu[colnum];
+	}
+	set_palette(7,grey,grey,grey);
+    }
+
+    if (!pal_ok[0]) set_palette(0,0,0,0);
+    if (!pal_ok[1]) set_palette(1,pal_red[7],0,0);
+    if (!pal_ok[2]) set_palette(2,0,pal_grn[7],0);
+    if (!pal_ok[3]) set_palette(3,pal_red[7],pal_grn[7],0);
+    if (!pal_ok[4]) set_palette(4,0,0,pal_blu[7]);
+    if (!pal_ok[5]) set_palette(5,pal_red[7],0,pal_blu[7]);
+    if (!pal_ok[6]) set_palette(6,0,pal_grn[7],pal_blu[7]);
+
+    grey = 255;
+    colnum = 7;
+    if (pal_red[colnum] < grey) grey = pal_red[colnum];
+    if (pal_grn[colnum] < grey) grey = pal_grn[colnum];
+    if (pal_blu[colnum] < grey) grey = pal_blu[colnum];
+    gray=255;
+
+    for(colnum=8; colnum<16; colnum++) {
+	if (pal_ok[colnum]) continue;
+
+	pal_red[colnum] = int(pal_red[colnum-8] *gray/grey);
+	pal_grn[colnum] = int(pal_grn[colnum-8] *gray/grey);
+	pal_blu[colnum] = int(pal_blu[colnum-8] *gray/grey);
+
+	if (pal_red[colnum] > 255) pal_red[colnum] = 255;
+	if (pal_grn[colnum] > 255) pal_grn[colnum] = 255;
+	if (pal_blu[colnum] > 255) pal_blu[colnum] = 255;
+    }
+}
+
+function flatten_palette(      colnum,grey,red,green,blue) {
+    for(colnum = 0; colnum < 30; colnum++) {
+	if (!pal_set[colnum]) continue;
+	red = pal_red[colnum];
+	green = pal_grn[colnum];
+	blue = pal_blu[colnum];
+
+	# grey = 0.3*red + 0.6*green + 0.1*blue
+
+	# PAL
+	grey = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+	# NTSC (Never twice the same color)
+	grey = 0.299 * red + 0.587 * green + 0.114 * blue
+
+	# Mean
+	grey = (red + green + blue)/3
+
+	# Binary
+	grey = 0.286*red + 0.572*green + 0.143*blue
+
+	grey = int(grey)
+	set_palette(colnum, grey, grey, grey)
+    }
+}
+
+function quantize12bit(      colnum,red,green,blue) {
+    for(colnum = 0; colnum < 30; colnum++) {
+	if (!pal_set[colnum]) continue;
+	red = pal_red[colnum];
+	green = pal_grn[colnum];
+	blue = pal_blu[colnum];
+
+	red = int((red + 8) / 17) * 17;
+	green = int((green + 8) / 17) * 17;
+	blue = int((blue + 8) / 17) * 17;
+
+	set_palette(colnum, red, green, blue)
+    }
+}
+
+function xterm256(r,g,b,	nr,ng,nb,nw,tr,tg,tb,tw,dc,dm) {
+
+	nr = int((r-36)/40); if (nr == 0) nr = int((r+47)/95);
+        ng = int((g-36)/40); if (ng == 0) ng = int((g+47)/95);
+        nb = int((b-36)/40); if (nb == 0) nb = int((b+47)/95);
+
+	nw = int((r+g+b)/3);
+	nw = 232 + int((nw-4)/10);
+	if (nw > 255) nw = 255;
+
+	tr = nr ? nr * 40 + 55 : 0;
+	tg = ng ? ng * 40 + 55 : 0;
+	tb = nb ? nb * 40 + 55 : 0;
+	dc = (tr-r)*(tr-r)+(tg-g)*(tg-g)+(tb-b)*(tb-b);
+
+	tw = (nw-232) * 10 + 8;
+	dm = (tw-r)*(tw-r)+(tw-g)*(tw-g)+(tw-b)*(tw-b);
+
+	if ( dc > dm ) {
+	    return_red = tw;
+	    return_grn = tw;
+	    return_blu = tw;
+	} else {
+	    return_red = tr;
+	    return_grn = tg;
+	    return_blu = tb;
+	}
+}
+
+function quantize8bit(      colnum,r,g,b,nr,ng,nb,nw,tr,tg,tb,tw,dc,dm) {
+    for(colnum = 0; colnum < 30; colnum++) {
+	if (!pal_set[colnum]) continue;
+	r = pal_red[colnum];
+	g = pal_grn[colnum];
+	b = pal_blu[colnum];
+
+	xterm256(r,g,b);
+	set_palette(colnum, return_red, return_grn, return_blu);
+    }
+}
+
+################################################################################
+
+function output_mintty( 	colnum,colname) {
+    if (!minttyinit) do_minttyinit();
+    for(colname in mintty_colnum) mintty_colname[mintty_colnum[colname]] = colname;
+
+    for(colnum=0; colnum<30; colnum++) {
+	if (!(colnum in mintty_colname)) continue;
+	if (!pal_set[colnum]) continue;
+	printf "%s=%d,%d,%d\n", mintty_colname[colnum], pal_red[colnum], pal_grn[colnum], pal_blu[colnum];
+    }
+}
+
+function output_palette(      colnum,red,green,blue,esc,trm) {
+# Colours for PuTTY, Linux console has first 16.
+# 0..7	    Normal	(KRGYBMCW)
+# 8..15	    Bright/Bold
+# 16	    default foreground
+# 17	    default bold foreground
+# 18	    default background
+# 19	    default bold background
+# 20	    cursor foreground
+# 21	    cursor background
+
+# Extra internal codes
+# 22	    selected_text_color
+# 23	    selection_color
+
+# Apple iTerm codes.
+# 16 = foreground
+# 17 = background
+# 18 = bold color
+# 19 = selection color
+# 20 = selected text color
+# 21 = cursor
+# 22 = cursor text
+
+    if (testmode == 1) return;
+
+    for(colnum = 0; colnum < 30; colnum++) {
+	if (!pal_set[colnum]) continue;
+	if (colnum >= 16 && !dodefaults) break;
+
+	coloursknown = 1;
+	red = pal_red[colnum];
+	green = pal_grn[colnum];
+	blue = pal_blu[colnum];
+
+	if (linuxseq || puttyseq || itermseq) {
+	    if (colnum < 16)
+		colcode = sprintf("%x", colnum);
+	    else if (puttyseq && colnum < 22)
+		colcode = sprintf("%c", colnum -16 +71);
+	    else if (itermseq) {
+		colcode = "";
+		if (colnum == 16) colcode = "g"; # foreground
+		if (colnum == 18) colcode = "h"; # background
+		if (colnum == 17) colcode = "i"; # bold
+		if (colnum == 22) colcode = "j"; # selection
+		if (colnum == 23) colcode = "k"; # selected_text
+		if (colnum == 21) colcode = "l"; # cursor
+		if (colnum == 20) colcode = "m"; # cursor_text
+	    } else
+		colcode = "";
+
+	    if (colcode != "") {
+		if (screen == 1) printf "\033P";
+		if (tmux == 1) printf "\033Ptmux;\033";
+		printf "\033]P%s%02x%02x%02x", colcode, red, green, blue
+
+		# The ST isn't required by Linux or PuTTY but it's sent directly
+		# or through tmux. For screen the ST ends screen's DCS only.
+		if (tmux == 1) printf "\033\033\\";
+		printf "\033\\";
+		if (colnum > 15 && linuxseq)
+		    printf "\r      \r";
+	    }
+	}
+
+	if (xtermseq) {
+	    esc = "\033"; trm = "\033\\";
+	    if (tmux == 1) { printf "\033Ptmux;"; esc = "\033\033"; trm = "\033\033\\"; }
+	    if (screen == 1) { printf "\033P"; esc = "\033"; trm = "\007"; }
+
+	    if (colnum < 16) {
+		printf "%s]4;%d;rgb:%02x/%02x/%02x%s", esc, colnum, red, green, blue, trm
+	    } else if (colnum == 16) {
+		printf "%s]10;rgb:%02x/%02x/%02x%s", esc, red, green, blue, trm
+	    } else if (colnum == 18) {
+		printf "%s]11;rgb:%02x/%02x/%02x%s", esc, red, green, blue, trm
+	    } else if (colnum == 21) {
+		printf "%s]12;rgb:%02x/%02x/%02x%s", esc, red, green, blue, trm
+	    } else if (colnum == 22) {
+		printf "%s]19;rgb:%02x/%02x/%02x%s", esc, red, green, blue, trm
+	    } else if (colnum == 23) {
+		printf "%s]17;rgb:%02x/%02x/%02x%s", esc, red, green, blue, trm
+	    }
+	    if (tmux == 1 || screen == 1) printf "\033\\";
+	}
+    }
+}
+
+function output_terminfo(      colnum, cs, sgr) {
+    printf "\tsetaf=\\E[38;%%?%%p1%%{15}%%>%%t5;%%p1%%d%%e"
+    printf "2;%%?"
+    for(colnum = 0; colnum < 16; colnum++) {
+	if (colnum != 0) printf "%%e";
+	printf "%%p1%%{%d}%%=%%t%d;%d;%d", colnum, pal_red[colnum], pal_grn[colnum], pal_blu[colnum];
+    }
+    printf "%%;%%;m,\n"
+
+    printf "\tsetab=\\E[48;%%?%%p1%%{15}%%>%%t5;%%p1%%d%%e"
+    printf "2;%%?"
+    for(colnum = 0; colnum < 16; colnum++) {
+	if (colnum != 0) printf "%%e";
+	printf "%%p1%%{%d}%%=%%t%d;%d;%d", colnum, pal_red[colnum], pal_grn[colnum], pal_blu[colnum];
+    }
+    printf "%%;%%;m,\n"
+
+    if (pal_set[16] && pal_set[18]) {
+	colnum = 16;
+	cs = sprintf("38;2;%d;%d;%d", pal_red[colnum], pal_grn[colnum], pal_blu[colnum]);
+	colnum = 18;
+	cs = cs ";" sprintf("48;2;%d;%d;%d", pal_red[colnum], pal_grn[colnum], pal_blu[colnum]);
+
+	# These SGR assume the normal minimum set of attributes.
+	printf "\top=\\E[%sm,\n", cs
+	printf "\tsgr0=\\E[;%sm,\n", cs
+	sgr="%?%p1%p6%|%t;1%;%?%p2%t;4%;%?%p1%p3%|%t;7%;%?%p4%t;5%;m"
+	printf "\tsgr=\\E;%s;%s,\n", cs, sgr;
+    }
+}
+
+function output_vimterminfo(      colnum, cs, sgr) {
+    printf "let &t_AF=\"\\e[38;%%?%%p1%%{15}%%>%%t5;%%p1%%d%%e"
+    printf "2;%%?"
+    for(colnum = 0; colnum < 16; colnum++) {
+	if (colnum != 0) printf "%%e";
+	printf "%%p1%%{%d}%%=%%t%d;%d;%d", colnum, pal_red[colnum], pal_grn[colnum], pal_blu[colnum];
+    }
+    printf "%%;%%;m\"\n"
+
+    printf "let &t_AB=\"\\e[48;%%?%%p1%%{15}%%>%%t5;%%p1%%d%%e"
+    printf "2;%%?"
+    for(colnum = 0; colnum < 16; colnum++) {
+	if (colnum != 0) printf "%%e";
+	printf "%%p1%%{%d}%%=%%t%d;%d;%d", colnum, pal_red[colnum], pal_grn[colnum], pal_blu[colnum];
+    }
+    printf "%%;%%;m\"\n"
+
+    if (pal_set[16]) colnum = 16; else colnum = 7;
+    cs = sprintf("38;2;%d;%d;%d", pal_red[colnum], pal_grn[colnum], pal_blu[colnum]);
+
+    if (pal_set[18]) colnum = 18; else colnum = 0;
+    cs = cs ";" sprintf("48;2;%d;%d;%d", pal_red[colnum], pal_grn[colnum], pal_blu[colnum]);
+
+    printf "let &t_op=\"\\e[%sm\"\n", cs
+    printf "let &t_me=\"\\e[;%sm\"\n", cs
+
+    print "\" Note: you will need to reset the colours in t_ti because"
+    print "\"       VIM outputs t_me too early"
+    printf "let &t_ti = \"\\e[m\\e[?1049h\"\n"
+    printf "let &t_te = \"\\e[m\\e[2J\\e[?1049l\"\n"
+}
+
+function output_puttyterminfo(      colnum,red,green,blue) {
+
+    printf "\tis3="
+
+    for(colnum = 0; colnum < 30; colnum++) {
+	if (!pal_set[colnum]) continue;
+	if (colnum >= 16 && !dodefaults) break;
+
+	coloursknown = 1;
+	red = pal_red[colnum];
+	green = pal_grn[colnum];
+	blue = pal_blu[colnum];
+
+	if (colnum < 16)
+	    colcode = sprintf("%x", colnum);
+	else if (colnum < 22)
+	    colcode = sprintf("%c", colnum -16 +71);
+	else
+	    colcode = "";
+
+	if (colcode != "") {
+	    printf "\\E]P%s%02x%02x%02x", colcode, red, green, blue
+
+	    # The ST isn't required by PuTTY.
+	    printf "\\E\\\\";
+	}
+    }
+    printf ",\n";
+}
+
+function output_puttysetting(      colnum,red,green,blue) {
+
+    for(colnum = 0; colnum < 22; colnum++) {
+	if (!pal_set[colnum]) continue;
+	if (colnum >= 16 && !dodefaults) break;
+
+	if (colnum < 8)
+	    colcode = colnum*2 + 6;
+	else if (colnum < 16)
+	    colcode = (colnum-8)*2 + 7;
+	else if (colnum < 22)
+	    colcode = colnum - 16;
+
+	coloursknown = 1;
+	red = pal_red[colnum];
+	green = pal_grn[colnum];
+	blue = pal_blu[colnum];
+
+	printf "Colour%d=%d,%d,%d\n", colcode, red, green, blue
+    }
+}
+
+################################################################################
+
+function do_xrdbinit(      i) {
+    xrdbinit = 1;
+
+    for(i=0; i<256; i++) {
+	hexconv[sprintf("%x",i)] = i;
+	hexconv[sprintf("%02x",i)] = i;
+    }
+
+    for(i=0; i<16; i++)
+	xrdb_colnum[sprintf("ansi_%d_color", i)] = i;
+
+    xrdb_colnum["foreground_color"] = 16;
+    xrdb_colnum["background_color"] = 18;
+    xrdb_colnum["cursor_color"] = 21;
+    xrdb_colnum["cursor_text_color"] = 20;
+
+    xrdb_colnum["bold_color"] = 17;
+    xrdb_colnum["bold_background_color"] = 19;
+
+    xrdb_colnum["selection_color"] = 22;
+    xrdb_colnum["selected_text_color"] = 23;
+}
+
+function do_minttyinit( 	i) {
+    minttyinit = 1;
+
+    mintty_colnum["ForegroundColour"] = 16;
+    mintty_colnum["BackgroundColour"] = 18;
+    mintty_colnum["CursorColour"] = 21;
+    mintty_colnum["BoldColour"] = 17;
+
+    mintty_colnum["Black"] = 0;
+    mintty_colnum["BoldBlack"] = 8;
+    mintty_colnum["Red"] = 1;
+    mintty_colnum["BoldRed"] = 9;
+    mintty_colnum["Green"] = 2;
+    mintty_colnum["BoldGreen"] = 10;
+    mintty_colnum["Yellow"] = 3;
+    mintty_colnum["BoldYellow"] = 11;
+    mintty_colnum["Blue"] = 4;
+    mintty_colnum["BoldBlue"] = 12;
+    mintty_colnum["Magenta"] = 5;
+    mintty_colnum["BoldMagenta"] = 13;
+    mintty_colnum["Cyan"] = 5;
+    mintty_colnum["BoldCyan"] = 14;
+    mintty_colnum["White"] = 7;
+    mintty_colnum["BoldWhite"] = 15;
+
+    mintty_colnum["CursorTextColour"] = 20;
+    mintty_colnum["BoldBackgroundColour"] = 19;
+    mintty_colnum["SelectionColour"] = 22;
+    mintty_colnum["SelectedTextColour"] = 23;
+}
+
+################################################################################
+
+function import_solarized_ansi() {
+    if (!minttyinit) do_minttyinit();
+
+    set_palette(mintty_colnum["Black"], 7,54,66);
+    set_palette(mintty_colnum["Red"], 220,50,47);
+    set_palette(mintty_colnum["Green"], 50,153,0);
+    set_palette(mintty_colnum["Yellow"], 181,137,0);
+    set_palette(mintty_colnum["Blue"], 38,94,210);
+    set_palette(mintty_colnum["Cyan"], 38,150,130);
+    set_palette(mintty_colnum["Magenta"], 211,54,130);
+    set_palette(mintty_colnum["White"], 147,161,161);
+
+    set_palette(mintty_colnum["BoldBlack"], 52,99,111);
+    set_palette(mintty_colnum["BoldRed"], 255,95,92);
+    set_palette(mintty_colnum["BoldGreen"], 95,198,45);
+    set_palette(mintty_colnum["BoldYellow"], 226,182,45);
+    set_palette(mintty_colnum["BoldBlue"], 38,139,255);
+    set_palette(mintty_colnum["BoldCyan"], 83,195,175);
+    set_palette(mintty_colnum["BoldMagenta"], 255,99,175);
+    set_palette(mintty_colnum["BoldWhite"], 192,206,206);
+
+    set_palette(mintty_colnum["ForegroundColour"], 131,148,150);
+    set_palette(mintty_colnum["BoldColour"], 147,161,161);
+    set_palette(mintty_colnum["BackgroundColour"], 0,43,54);
+    set_palette(mintty_colnum["BoldBackgroundColour"], 7,54,66);
+    set_palette(mintty_colnum["CursorTextColour"], 0,0,0);
+    set_palette(mintty_colnum["CursorColour"], 0,255,0);
+    set_palette(mintty_colnum["SelectedTextColour"], 0,255,255);
+    set_palette(mintty_colnum["SelectionColour"], 7,54,66);
+}
+
+################################################################################
+
+{ has_file=1; fname=FILENAME; }
+
+/^#define .* #......[	 ]*$/ {
+    colour_name = tolower($2);
+    colour_hex = tolower($3);
+
+    if (!xrdbinit) do_xrdbinit();
+
+    if (!(colour_name in xrdb_colnum)) next; # Unsupported colours
+
+    colnum = xrdb_colnum[colour_name];
+
+    if ((xtermcursor || mc || gc) && (colnum == 20 || colnum == 21)) next;
+
+    colour[1] = hexconv[substr(colour_hex,2,2)];
+    colour[2] = hexconv[substr(colour_hex,4,2)];
+    colour[3] = hexconv[substr(colour_hex,6,2)];
+
+    ccount++;
+    set_palette(colnum, colour[1], colour[2], colour[3]);
+    next;
+}
+
+/^[\t ]*[;#]/ { next; }
+/^[\t ]*$/ { next; }
+
+/^[\t ]*[a-zA-Z0-9_]*[\t ]*=[\t ]*[0-9]*[\t ]*,[\t ]*[0-9]*[\t ]*,[\t ]*[0-9]*[\t ]*$/ {
+    if (!minttyinit) do_minttyinit();
+    sub("=", " = ", $0);
+    if (!($1 in mintty_colnum)) {
+	print "BAD line found: ", $0;
+	next;
+    }
+
+    gsub(",", " , ", $0);
+    set_palette(mintty_colnum[$1], $3, $5, $7);
+    ccount++;
+    next;
+}
+
+/Colour[0-9]/ {
+    ln=$0
+
+    colnum = ln
+    sub("^.*Colour *", "", colnum);
+    sub("[^0-9].*$", "", colnum);
+
+    entry = ln
+    sub("^.*Colour[^=\\\\]*[\\\\=:][^0-9]*", "", entry);
+    sub("[^0-9]*$", "", entry);
+    cc = split(entry, colour, ",");
+    if (colnum == "") next;
+    if (cc != 3) {
+	print "BAD colour line found:", $0
+	errored = 1
+	next;
+    }
+    ccount++;
+
+    split("16,17,18,19,20,21,0,8,1,9,2,10,3,11,4,12,5,13,6,14,7,15", map, ",");
+    colnum = 0+map[colnum+1];
+
+    if (whitebg && colnum>= 16) {
+	split("18,19,16,17,21,20", map, ",");
+	colnum = 0+map[colnum-15];
+    }
+    if ((xtermcursor || mc || gc) && (colnum == 20 || colnum == 21)) next;
+
+    set_palette(colnum, colour[1], colour[2], colour[3]);
+    next;
+}
+
+/^base..: "......"/ {
+    if (!base16init) {
+	for(i=0; i<256; i++) {
+	    hexconv[sprintf("%x",i)] = i;
+	    hexconv[sprintf("%02x",i)] = i;
+	    hexconv[sprintf("%02X",i)] = i;
+	}
+	base16init = 1;
+    }
+    colour_hex = tolower($2);
+
+    colnum = hexconv[substr($1,5,2)]
+    if (colnum == "" || colnum+0 <0 || colnum+0 > 15) next;
+
+    colour[1] = hexconv[substr(colour_hex,2,2)];
+    colour[2] = hexconv[substr(colour_hex,4,2)];
+    colour[3] = hexconv[substr(colour_hex,6,2)];
+
+    ccount++;
+    set_palette(colnum, colour[1], colour[2], colour[3]);
+    next;
+}
+
+{
+    print "BAD line found: ", $0;
+    next;
+}
+
