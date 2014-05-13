@@ -424,10 +424,36 @@ static const struct cp_list_item cp_list[] = {
     {"Win1257 (Baltic)", 1257},
     {"Win1258 (Vietnamese)", 1258},
 
-    {"CP437", 437},
+    {"Win874 (ANSI/OEM - Thai)", 874},
+    {"Win932 (Japanese Shift-JIS)", 932},
+    {"Win936 (Simplified Chinese GBK)", 936},
+    {"Win949 (Korean)", 949},
+    {"Win950 (Traditional Chinese Big5)", 950},
+
+    {"JIS X 0208-1990 & 0212-1990", 20932},
+    {"Simplified Chinese GB 2312", 20936},
+    {"Simplified Chinese GB 18030", 54936},
+
+    {"CP437 (PC ROM)", 437},
     {"CP620 (Mazovia)", 0, 128, mazovia},
+
+    {"CP850 (OEM - Multilingual Latin I)", 850},
+    {"CP852 (OEM - Latin II)", 852},
+    {"CP855 (OEM - Cyrillic)", 855},
+    {"CP857 (OEM - Turkish)", 857},
+    {"CP858 (OEM - Multilingual Latin I + Euro)", 858},
+    {"CP860 (OEM - Portuguese)", 860},
+    {"CP861 (OEM - Icelandic)", 861},
+    {"CP862 (OEM - Hebrew)", 862},
+    {"CP863 (OEM - Canadian French)", 863},
+    {"CP864 (OEM - Arabic)", 864},
+    {"CP865 (OEM - Nordic)", 865},
+    {"CP866 (OEM - Russian)", 866},
+    {"CP869 (OEM - Modern Greek)", 869},
+
+    {"T.61 8-Bit", 20261},
+
     {"CP819", 28591},
-    {"CP852", 852},
     {"CP878", 20866},
 
     {"Use font encoding", -1},
@@ -458,8 +484,10 @@ void init_ucs(Conf *conf, struct unicode_data *ucsdata)
 	ucsdata->dbcs_screenfont = 0;
 	if (ucsdata->line_codepage <= 0)
 	    ucsdata->line_codepage = GetACP();
-    } else if (ucsdata->line_codepage <= 0)
+    } else if (ucsdata->line_codepage <= 0) {
 	ucsdata->line_codepage = ucsdata->font_codepage;
+	used_dtf = 1;
+    }
 
     /* Collect screen font ucs table */
     if (ucsdata->dbcs_screenfont || ucsdata->font_codepage == 0) {
@@ -489,8 +517,8 @@ void init_ucs(Conf *conf, struct unicode_data *ucsdata)
 
     /* Collect line set ucs table */
     if (ucsdata->line_codepage == ucsdata->font_codepage &&
-	(ucsdata->dbcs_screenfont ||
-	 vtmode == VT_POORMAN || ucsdata->font_codepage==0)) {
+	(vtmode == VT_POORMAN || vtmode == VT_XWINDOWS ||
+	 used_dtf || ucsdata->font_codepage==0)) {
 
 	/* For DBCS and POOR fonts force direct to font */
 	used_dtf = 1;
@@ -500,7 +528,7 @@ void init_ucs(Conf *conf, struct unicode_data *ucsdata)
 	    ucsdata->unitab_line[i] = (WCHAR) (CSET_ACP + i);
 	ucsdata->unitab_line[127] = (WCHAR) 127;
     } else {
-	get_unitab(ucsdata->line_codepage, ucsdata->unitab_line, 0);
+	get_unitab(ucsdata->line_codepage, ucsdata->unitab_line, 3);
     }
 
 #if 0
@@ -555,10 +583,28 @@ void init_ucs(Conf *conf, struct unicode_data *ucsdata)
 	ucsdata->uni_tbl = 0;
     }
     if (!used_dtf) {
-	for (i = 0; i < 256; i++) {
+	int goodcount = 0;
+	int idx;
+	for (i = 128; i < 256; i++) {
 	    if (DIRECT_CHAR(ucsdata->unitab_line[i]))
 		continue;
 	    if (DIRECT_FONT(ucsdata->unitab_line[i]))
+		continue;
+	    if (ucsdata->unitab_line[i] == 0xFFFD)
+		continue;
+	    if (ucsdata->unitab_line[i] == MBCSPREFIX)
+		continue;
+	    goodcount ++;
+	}
+	if (goodcount > 64) for (idx = 0; idx < 256; idx++) {
+	    i = ((idx+32) & 0xFF);
+	    if (DIRECT_CHAR(ucsdata->unitab_line[i]))
+		continue;
+	    if (DIRECT_FONT(ucsdata->unitab_line[i]))
+		continue;
+	    if (ucsdata->unitab_line[i] == 0xFFFD)
+		continue;
+	    if (ucsdata->unitab_line[i] == MBCSPREFIX)
 		continue;
 	    if (!ucsdata->uni_tbl) {
 		ucsdata->uni_tbl = snewn(256, char *);
@@ -569,7 +615,8 @@ void init_ucs(Conf *conf, struct unicode_data *ucsdata)
 		ucsdata->uni_tbl[j] = snewn(256, char);
 		memset(ucsdata->uni_tbl[j], 0, 256 * sizeof(char));
 	    }
-	    ucsdata->uni_tbl[j][ucsdata->unitab_line[i] & 0xFF] = i;
+	    if (ucsdata->uni_tbl[j][ucsdata->unitab_line[i] & 0xFF] == 0)
+		ucsdata->uni_tbl[j][ucsdata->unitab_line[i] & 0xFF] = i;
 	}
     }
 
@@ -1083,10 +1130,8 @@ int decode_codepage(char *cp_name)
   break_break:;
     if (codepage != -1) {
 	if (codepage != CP_UTF8 && codepage < 65536) {
-	    if (GetCPInfo(codepage, &cpinfo) == 0) {
+	    if (GetCPInfo(codepage, &cpinfo) == 0)
 		codepage = -2;
-	    } else if (cpinfo.MaxCharSize > 1)
-		codepage = -3;
 	}
     }
     if (codepage == -1 && *cp_name)
@@ -1146,7 +1191,7 @@ void get_unitab(int codepage, wchar_t * unitab, int ftype)
     char tbuf[4];
     int i, max = 256, flg = MB_ERR_INVALID_CHARS;
 
-    if (ftype)
+    if (ftype == 1 || ftype == 2)
 	flg |= MB_USEGLYPHCHARS;
     if (ftype == 2)
 	max = 128;
@@ -1163,12 +1208,28 @@ void get_unitab(int codepage, wchar_t * unitab, int ftype)
 	codepage = GetOEMCP();
 
     if (codepage > 0 && codepage < 65536) {
-	for (i = 0; i < max; i++) {
+	int errchar = 0xFFFD;
+	for (i = 0; i < max; i++) unitab[i] = 0;
+	if (ftype == 3) {
+	    int j;
+	    CPINFO cpinfo;
+	    if (GetCPInfo(codepage, &cpinfo)) {
+		if (cpinfo.LeadByte[0] > 0) {
+		    for(i=0; i<MAX_LEADBYTES; i+=2) {
+			if(cpinfo.LeadByte[i+1] > 0)
+			    for(j=cpinfo.LeadByte[i]; j<=cpinfo.LeadByte[i+1]; j++)
+				unitab[j] = MBCSPREFIX;
+		    }
+		} else if (cpinfo.MaxCharSize > 1)
+		    errchar = MBCSPREFIX;
+	    }
+	}
+	for (i = 0; i < max; i++) if (unitab[i] == 0) {
 	    tbuf[0] = i;
 
 	    if (mb_to_wc(codepage, flg, tbuf, 1, unitab + i, 1)
 		!= 1)
-		unitab[i] = 0xFFFD;
+		unitab[i] = errchar;
 	}
     } else {
 	int j = 256 - cp_list[codepage & 0xFFFF].cp_size;
