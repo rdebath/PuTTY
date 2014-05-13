@@ -89,9 +89,9 @@ const wchar_t sel_nl[] = SEL_NL;
 	((chr) == 0x20 || (DIRECT_CHAR(chr) && ((chr) & 0xFF) == 0x20))
 
 /*
- * Spot magic CSETs.
+ * Spot magic FE CSETs.
  */
-#define CSET_OF(chr) (DIRECT_CHAR(chr)||DIRECT_FONT(chr) ? (chr)&CSET_MASK : 0)
+#define CSET_OF(chr) (DIRECT_FONT(chr) ? (chr)&CSET_MASK : 0)
 
 /*
  * Internal prototypes.
@@ -1350,7 +1350,7 @@ static void power_on(Terminal *term, int clear)
     term->alt_sco_acs = term->sco_acs =
         term->save_sco_acs = term->alt_save_sco_acs = 0;
     term->cset_attr[0] = term->cset_attr[1] =
-        term->save_csattr = term->alt_save_csattr = CSET_ASCII;
+        term->save_csattr = term->alt_save_csattr = LCHAR_ASCII;
     term->rvideo = 0;
     term->in_vbell = FALSE;
     term->cursor_on = 1;
@@ -1642,7 +1642,7 @@ void term_reconfig(Terminal *term, Conf *conf)
 	set_raw_mouse_mode(term->frontend, 0);
     }
     if (conf_get_int(term->conf, CONF_no_remote_charset)) {
-	term->cset_attr[0] = term->cset_attr[1] = CSET_ASCII;
+	term->cset_attr[0] = term->cset_attr[1] = LCHAR_ASCII;
 	term->sco_acs = term->alt_sco_acs = 0;
 	term->utf = 0;
     }
@@ -3244,6 +3244,14 @@ static void term_out(Terminal *term)
 		    if (c < 0xA0)
 			c = 0xFFFD;
 
+		    /* Linux direct to font compatability.
+		     * Maps the VGA rom font (CP437) to U+F000.
+		     * Note: Console tools can change this, but if anything
+		     *       assumes a charmap it has to be this one.
+		     */
+		    if (c >= 0xF000 && c < 0xF100)
+			c = (c & 0xFF) + CSET_SCOACS;
+
 		    /* The UTF-16 surrogates are not nice either. */
 		    /*       The standard give the option of decoding these: 
 		     *       I don't want to! */
@@ -3281,26 +3289,26 @@ static void term_out(Terminal *term)
 		     * range, make sure we use the same font as well as
 		     * the same encoding.
 		     */
-		  case CSET_LINEDRW:
+		  case LCHAR_LINEDRW:
 		    if (term->ucsdata->unitab_ctrl[c] != 0xFF)
 			c = term->ucsdata->unitab_ctrl[c];
 		    else
 			c = ((unsigned char) c) | CSET_LINEDRW;
 		    break;
 
-		  case CSET_GBCHR:
+		  case LCHAR_UKASCII:
 		    /* If UK-ASCII, make the '#' a LineDraw Pound */
 		    if (c == '#') {
 			c = '}' | CSET_LINEDRW;
 			break;
 		    }
-		  /*FALLTHROUGH*/ case CSET_ASCII:
+		  /*FALLTHROUGH*/ case LCHAR_ASCII:
 		    if (term->ucsdata->unitab_ctrl[c] != 0xFF)
 			c = term->ucsdata->unitab_ctrl[c];
 		    else
 			c = ((unsigned char) c) | CSET_ASCII;
 		    break;
-		case CSET_SCOACS:
+		case LCHAR_SCOACS:
 		    if (c>=' ') c = ((unsigned char)c) | CSET_SCOACS;
 		    break;
 		}
@@ -3678,43 +3686,43 @@ static void term_out(Terminal *term)
 		  case ANSI('A', '('):
 		    compatibility(VT100);
 		    if (!term->no_remote_charset)
-			term->cset_attr[0] = CSET_GBCHR;
+			term->cset_attr[0] = LCHAR_UKASCII;
 		    break;
 		  case ANSI('B', '('):
 		    compatibility(VT100);
 		    if (!term->no_remote_charset)
-			term->cset_attr[0] = CSET_ASCII;
+			term->cset_attr[0] = LCHAR_ASCII;
 		    break;
 		  case ANSI('0', '('):
 		    compatibility(VT100);
 		    if (!term->no_remote_charset)
-			term->cset_attr[0] = CSET_LINEDRW;
+			term->cset_attr[0] = LCHAR_LINEDRW;
 		    break;
 		  case ANSI('U', '('): 
 		    compatibility(OTHER);
 		    if (!term->no_remote_charset)
-			term->cset_attr[0] = CSET_SCOACS; 
+			term->cset_attr[0] = LCHAR_SCOACS;
 		    break;
 		  /* G1D4: G1-designate 94-set */
 		  case ANSI('A', ')'):
 		    compatibility(VT100);
 		    if (!term->no_remote_charset)
-			term->cset_attr[1] = CSET_GBCHR;
+			term->cset_attr[1] = LCHAR_UKASCII;
 		    break;
 		  case ANSI('B', ')'):
 		    compatibility(VT100);
 		    if (!term->no_remote_charset)
-			term->cset_attr[1] = CSET_ASCII;
+			term->cset_attr[1] = LCHAR_ASCII;
 		    break;
 		  case ANSI('0', ')'):
 		    compatibility(VT100);
 		    if (!term->no_remote_charset)
-			term->cset_attr[1] = CSET_LINEDRW;
+			term->cset_attr[1] = LCHAR_LINEDRW;
 		    break;
 		  case ANSI('U', ')'): 
 		    compatibility(OTHER);
 		    if (!term->no_remote_charset)
-			term->cset_attr[1] = CSET_SCOACS; 
+			term->cset_attr[1] = LCHAR_SCOACS;
 		    break;
 		  /* DOCS: Designate other coding system */
 		  case ANSI('8', '%'):	/* Old Linux code */
@@ -4878,10 +4886,10 @@ static void term_out(Terminal *term)
 		     *
 		     */
 		  case 'F':
-		    term->cset_attr[term->cset = 0] = CSET_LINEDRW;
+		    term->cset_attr[term->cset = 0] = LCHAR_LINEDRW;
 		    break;
 		  case 'G':
-		    term->cset_attr[term->cset = 0] = CSET_ASCII;
+		    term->cset_attr[term->cset = 0] = LCHAR_ASCII;
 		    break;
 		  case 'H':
 		    move(term, 0, 0, 0);

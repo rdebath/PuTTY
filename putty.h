@@ -81,19 +81,20 @@ typedef struct terminal_tag Terminal;
 
 #define ATTR_INVALID 0x03FFFFU
 
-/* Like Linux use the F000 page for direct to font. */
-#define CSET_OEMCP   0x0000F000UL      /* OEM Codepage DTF */
-#define CSET_ACP     0x0000F100UL      /* Ansi Codepage DTF */
+/* These are direct to font mappings for 8-bit character sets. */
+#define CSET_OEMCP   0x0000DC00UL           /* OEM Codepage DTF */
+#define CSET_ACP     (CSET_OEMCP+0x100)     /* ASCII/Ansi Codepage DTF */
 
-/* These are internal use overlapping with the UTF-16 surrogates */
-#define CSET_ASCII   0x0000D800UL      /* normal ASCII charset ESC ( B */
-#define CSET_LINEDRW 0x0000D900UL      /* line drawing charset ESC ( 0 */
-#define CSET_SCOACS  0x0000DA00UL      /* SCO Alternate charset */
-#define CSET_GBCHR   0x0000DB00UL      /* UK variant   charset ESC ( A */
+/* These are internal use beyond the highest legal UCS character. */
+#define CSET_ASCII   0x00180000UL           /* normal ASCII charset ESC ( B */
+#define CSET_LINEDRW (CSET_ASCII+0x100)     /* line drawing charset ESC ( 0 */
+#define CSET_SCOACS  (CSET_ASCII+0x200)     /* SCO Alternate charset */
+
+/* Masks and checking macros */
 #define CSET_MASK    0xFFFFFF00UL      /* Character set mask */
 
-#define DIRECT_CHAR(c) ((c&0xFFFFFC00)==0xD800)
-#define DIRECT_FONT(c) ((c&0xFFFFFE00)==0xF000)
+#define DIRECT_CHAR(c) ((c&0xFFFFFC00)==CSET_ASCII)
+#define DIRECT_FONT(c) ((c&0xFFFFFE00)==CSET_OEMCP)
 
 #define UCSERR	     (CSET_LINEDRW|'a')	/* UCS Format error character. */
 /*
@@ -117,6 +118,16 @@ typedef struct terminal_tag Terminal;
 #define ATTR_COLOURS 0x03FFFFU
 #define ATTR_FGSHIFT 0
 #define ATTR_BGSHIFT 9
+
+/*
+ * Distinct definitions for the default line character sets as opposed to
+ * the on screen special character sets.
+ */
+
+#define LCHAR_ASCII     1           /* US ASCII */
+#define LCHAR_LINEDRW   2           /* DEC Special Graphics */
+#define LCHAR_UKASCII   3           /* UK ASCII */
+#define LCHAR_SCOACS    4           /* Linux/SCO Alternate set */
 
 /*
  * The definitive list of colour numbers stored in terminal
