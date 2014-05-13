@@ -39,7 +39,7 @@ int mb_to_wc(int codepage, int flags, const char *mbstr, int mblen,
 	int n = 0;
 
 	while (mblen > 0) {
-	    wcstr[n] = 0xD800 | (mbstr[0] & 0xFF);
+	    wcstr[n] = CSET_ACP | (mbstr[0] & 0xFF);
 	    n++;
 	    mbstr++;
 	    mblen--;
@@ -80,7 +80,7 @@ int wc_to_mb(int codepage, int flags, const wchar_t *wcstr, int wclen,
     } else if (codepage == CS_NONE) {
 	int n = 0;
 	while (wclen > 0 && n < mblen) {
-	    if (*wcstr >= 0xD800 && *wcstr < 0xD900)
+	    if (*wcstr >= CSET_ACP && *wcstr < CSET_ACP + 0x100)
 		mbstr[n++] = (*wcstr & 0xFF);
 	    else if (defchr)
 		mbstr[n++] = *defchr;
@@ -138,7 +138,7 @@ int init_ucs(struct unicode_data *ucsdata, char *linecharset,
      * the font's own encoding. This has been passed in to us, so
      * we use that. If it's still CS_NONE after _that_ - i.e. the
      * font we were given had an incomprehensible charset - then we
-     * fall back to using the D800 page.
+     * fall back to using the CSET_ACP page.
      */
     if (ucsdata->line_codepage == CS_NONE)
 	ucsdata->line_codepage = font_charset;
@@ -159,7 +159,7 @@ int init_ucs(struct unicode_data *ucsdata, char *linecharset,
 	p = c;
 	len = 1;
 	if (ucsdata->line_codepage == CS_NONE)
-	    ucsdata->unitab_line[i] = 0xD800 | i;
+	    ucsdata->unitab_line[i] = CSET_ACP | i;
 	else if (1 == charset_to_unicode(&p, &len, wc, 1,
 					 ucsdata->line_codepage,
 					 NULL, L"", 0))
@@ -235,7 +235,7 @@ int init_ucs(struct unicode_data *ucsdata, char *linecharset,
 
     /*
      * Find the control characters in the line codepage. For
-     * direct-to-font mode using the D800 hack, we assume 00-1F and
+     * direct-to-font mode using the CSET_ACP hack, we assume 00-1F and
      * 7F are controls, but allow 80-9F through. (It's as good a
      * guess as anything; and my bet is that half the weird fonts
      * used in this way will be IBM or MS code pages anyway.)
@@ -243,7 +243,8 @@ int init_ucs(struct unicode_data *ucsdata, char *linecharset,
     for (i = 0; i < 256; i++) {
 	int lineval = ucsdata->unitab_line[i];
 	if (lineval < ' ' || (lineval >= 0x7F && lineval < 0xA0) ||
-	    (lineval >= 0xD800 && lineval < 0xD820) || (lineval == 0xD87F))
+	    (lineval >= CSET_ACP && lineval < CSET_ACP + 0x20) ||
+	    (lineval == CSET_ACP + 0x7F))
 	    ucsdata->unitab_ctrl[i] = i;
 	else
 	    ucsdata->unitab_ctrl[i] = 0xFF;
