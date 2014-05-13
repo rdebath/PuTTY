@@ -550,6 +550,9 @@ void EnableSizeTip(int bEnable);
 struct unicode_data;
 void init_ucs(Conf *, struct unicode_data *);
 int is_dbcs_leadbyte(int codepage, char byte);
+/* Flag for unitab_line table that the line character is the first byte
+   of an MBCS sequence. */
+#define MBCSPREFIX   0xFDE1
 
 /*
  * Exports from winhandl.c.

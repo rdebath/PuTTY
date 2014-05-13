@@ -3433,6 +3433,43 @@ static void term_out(Terminal *term)
 	    }
 	}
 
+#ifdef MBCSPREFIX
+	/* DBCS line codepage without direct to font. */
+	if ( (c&CSET_MASK) == CSET_ASCII &&
+	     term->ucsdata->unitab_line[c & 0xFF] == MBCSPREFIX) {
+	    if (term->lookaheadbuf_cnt > 1) {
+		char ibuf[8];
+		wchar_t wbuf[8];
+		int rv, i;
+		ibuf[0] = (BYTE)c;
+		for (i=1; i<term->lookaheadbuf_cnt; i++)
+		    ibuf[i] = (BYTE)term->lookaheadbuf[i];
+		rv = mb_to_wc(term->ucsdata->line_codepage,
+#ifdef MB_ERR_INVALID_CHARS
+			      MB_ERR_INVALID_CHARS,
+#else
+			      0,
+#endif
+			      ibuf, term->lookaheadbuf_cnt, wbuf, 6);
+		if (rv == 1) {
+		    c = wbuf[0];
+		    if (term->lookaheadbuf_cnt == 2 &&
+		        term->ucsdata->line_codepage != 20261) /* T.61 */
+			/* mk_wcwidth_cjk((unsigned int) c) == 2) */
+			    term->width_override = (term->width_override<<3) + 5;
+		    chars_eaten = term->lookaheadbuf_cnt;
+		}
+		else if (term->lookaheadbuf_cnt < 6 && rv == 0) {
+		    chars_eaten = 0;
+		    continue;
+		}
+	    } else {
+		chars_eaten = 0;
+		continue;
+	    }
+	}
+#endif
+
 	/* At this point all character translations are finished. */
 	c &= ~UNICODE_FLAG;
 

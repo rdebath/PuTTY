@@ -37,13 +37,14 @@ void lpage_send(void *handle,
 void luni_send(void *handle, const wchar_t *widebuf, int len, int interactive)
 {
     Ldisc ldisc = (Ldisc)handle;
-    int ratio = (in_utf(ldisc->term))?3:1;
     char *linebuffer;
     int linesize;
     int i;
     char *p;
 
-    linesize = len * ratio * 2;
+    /* UTF-8 is now upto 4 bytes/char as is GB18030. Largest windows MBCS
+     * is 5 bytes/character */
+    linesize = len * 5;
     linebuffer = snewn(linesize, char);
 
     if (in_utf(ldisc->term)) {
