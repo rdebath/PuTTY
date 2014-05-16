@@ -1259,7 +1259,7 @@ static void seen_disp_event(Terminal *term)
  */
 static void term_schedule_tblink(Terminal *term)
 {
-    if (term->blink_is_real) {
+    if (term->blink_is_real && term->has_focus) {
 	if (!term->tblink_pending)
 	    term->next_tblink = schedule_timer(TBLINK_DELAY, term_timer, term);
 	term->tblink_pending = TRUE;
@@ -6705,8 +6705,14 @@ void term_provide_logctx(Terminal *term, void *logctx)
 
 void term_set_focus(Terminal *term, int has_focus)
 {
+    if (term->has_focus == has_focus) return;
     term->has_focus = has_focus;
+    /* Set the screen blinkers on and in sync when we get focus */
+    term->cblink_pending = FALSE;
     term_schedule_cblink(term);
+    term->tblinker = 0;
+    term->tblink_pending = FALSE;
+    term_schedule_tblink(term);
 }
 
 /*
