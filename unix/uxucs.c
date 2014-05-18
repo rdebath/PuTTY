@@ -16,11 +16,6 @@
  * Unix Unicode-handling routines.
  */
 
-int is_dbcs_leadbyte(int codepage, char byte)
-{
-    return 0;			       /* we don't do DBCS */
-}
-
 int mb_to_wc(int codepage, int flags, const char *mbstr, int mblen,
 	     wchar_t *wcstr, int wclen)
 {
