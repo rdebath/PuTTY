@@ -1171,7 +1171,7 @@ extern const char ver[];
 #define CP_UTF8 65001
 #endif
 /* void init_ucs(void); -- this is now in platform-specific headers */
-int is_dbcs_leadbyte(int codepage, char byte);
+/* int is_dbcs_leadbyte(int codepage, char byte); -- this is now in platform-specific headers */
 int mb_to_wc(int codepage, int flags, const char *mbstr, int mblen,
 	     wchar_t *wcstr, int wclen);
 int wc_to_mb(int codepage, int flags, const wchar_t *wcstr, int wclen,

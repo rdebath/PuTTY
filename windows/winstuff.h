@@ -549,6 +549,7 @@ void EnableSizeTip(int bEnable);
  */
 struct unicode_data;
 void init_ucs(Conf *, struct unicode_data *);
+int is_dbcs_leadbyte(int codepage, char byte);
 
 /*
  * Exports from winhandl.c.
