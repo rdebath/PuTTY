@@ -4724,8 +4724,54 @@ static void term_out(Terminal *term)
 		    term->termstate = TOPLEVEL;
 		} else if (c == '\033')
 		    term->termstate = OSC_MAYBE_ST;
-		else if (term->osc_strlen < OSC_STR_MAX)
-		    term->osc_string[term->osc_strlen++] = (char)c;
+		else if (term->osc_strlen < OSC_STR_MAX-4) {
+		    /* c is a unicode character make it UTF-8 in the string. */
+		    /* First resolve any Line/Direct character sets. */
+		    switch (c & CSET_MASK) {
+		      case CSET_LINEDRW:
+			c = term->ucsdata->unitab_xterm[c & 0xFF];
+			break;
+		      case CSET_ASCII:
+			c = term->ucsdata->unitab_line[c & 0xFF];
+			break;
+		      case CSET_SCOACS:
+			c = term->ucsdata->unitab_scoacs[c & 0xFF];
+			break;
+		    }
+		    switch (c & CSET_MASK) {
+		      case CSET_ACP:
+			c = term->ucsdata->unitab_font[c & 0xFF];
+			break;
+		      case CSET_OEMCP:
+			c = term->ucsdata->unitab_oemcp[c & 0xFF];
+			break;
+		    }
+		    if (c<128)
+			term->osc_string[term->osc_strlen++] = (char)c;
+		    else {
+			int c1, c2, c3, c4;
+			c2 = (c>>6);
+			c1 = c - (c2<<6);
+			c3 = (c2>>6);
+			c2 = c2 - (c3<<6);
+			c4 = (c3>>6);
+			c3 = c3 - (c4<<6);
+
+			if (c < 2048) {
+			    term->osc_string[term->osc_strlen++] = (char)c2+192;
+			    term->osc_string[term->osc_strlen++] = (char)c1+128;
+			} else if (c < 65536) {
+			    term->osc_string[term->osc_strlen++] = (char)c3+224;
+			    term->osc_string[term->osc_strlen++] = (char)c2+128;
+			    term->osc_string[term->osc_strlen++] = (char)c1+128;
+			} else {
+			    term->osc_string[term->osc_strlen++] = (char)c4+240;
+			    term->osc_string[term->osc_strlen++] = (char)c3+128;
+			    term->osc_string[term->osc_strlen++] = (char)c2+128;
+			    term->osc_string[term->osc_strlen++] = (char)c1+128;
+			}
+		    }
+		}
 		break;
 	      case SEEN_OSC_P:
 		{

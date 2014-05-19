@@ -215,6 +215,9 @@ static int busy_status = BUSY_NOT;
 
 static char *window_name, *icon_name;
 
+static void set_titleA(void *frontend, char *);
+static void set_iconA(void *frontend, char *);
+
 static int compose_state = 0;
 
 static UINT wm_mousewheel = WM_MOUSEWHEEL;
@@ -285,8 +288,8 @@ static void start_backend(void)
 	title = msg;
     }
     sfree(realhost);
-    set_title(NULL, title);
-    set_icon(NULL, title);
+    set_titleA(NULL, title);
+    set_iconA(NULL, title);
 
     /*
      * Connect the terminal to the backend for resize purposes.
@@ -319,8 +322,8 @@ static void close_session(void *ignored_context)
 
     session_closed = TRUE;
     sprintf(morestuff, "%.70s (inactive)", appname);
-    set_icon(NULL, morestuff);
-    set_title(NULL, morestuff);
+    set_iconA(NULL, morestuff);
+    set_titleA(NULL, morestuff);
 
     if (ldisc) {
 	ldisc_free(ldisc);
@@ -2384,7 +2387,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 		    init_lvl = 2;
 		}
 
-		set_title(NULL, conf_get_str(conf, CONF_wintitle));
+		set_titleA(NULL, conf_get_str(conf, CONF_wintitle));
 		if (IsIconic(hwnd)) {
 		    SetWindowText(hwnd,
 				  conf_get_int(conf, CONF_win_name_always) ?
@@ -4827,6 +4830,42 @@ static int TranslateKey(UINT message, WPARAM wParam, LPARAM lParam,
 
 void set_title(void *frontend, char *title)
 {
+    /* Argument is UTF-8, convert to ANSI */
+    int mblen = strlen(title) + 1;
+    int wclen = mblen;
+    int aclen = wclen*2;
+    WCHAR * wcstr = snewn(wclen, WCHAR);
+    char * acstr = snewn(aclen, char);
+
+    wclen = MultiByteToWideChar(CP_UTF8, 0, title, mblen, wcstr, wclen);
+    aclen = WideCharToMultiByte(CP_ACP, 0, wcstr, wclen, acstr, aclen, 0, 0);
+
+    acstr[aclen] = 0;
+    set_titleA(frontend, acstr);
+    sfree(wcstr);
+    sfree(acstr);
+}
+
+void set_icon(void *frontend, char *title)
+{
+    /* Argument is UTF-8, convert to ANSI */
+    int mblen = strlen(title) + 1;
+    int wclen = mblen;
+    int aclen = wclen*2;
+    WCHAR * wcstr = snewn(wclen, WCHAR);
+    char * acstr = snewn(aclen, char);
+
+    wclen = MultiByteToWideChar(CP_UTF8, 0, title, mblen, wcstr, wclen);
+    aclen = WideCharToMultiByte(CP_ACP, 0, wcstr, wclen, acstr, aclen, 0, 0);
+
+    acstr[aclen] = 0;
+    set_iconA(frontend, acstr);
+    sfree(wcstr);
+    sfree(acstr);
+}
+
+static void set_titleA(void *frontend, char *title)
+{
     sfree(window_name);
     window_name = snewn(1 + strlen(title), char);
     strcpy(window_name, title);
@@ -4834,7 +4873,7 @@ void set_title(void *frontend, char *title)
 	SetWindowText(hwnd, title);
 }
 
-void set_icon(void *frontend, char *title)
+static void set_iconA(void *frontend, char *title)
 {
     sfree(icon_name);
     icon_name = snewn(1 + strlen(title), char);
