@@ -650,6 +650,7 @@ void save_open_settings(void *sesskey, Conf *conf)
     write_setting_i(sesskey, "LockSize", conf_get_int(conf, CONF_resize_action));
     write_setting_i(sesskey, "BCE", conf_get_int(conf, CONF_bce));
     write_setting_i(sesskey, "BlinkText", conf_get_int(conf, CONF_blinktext));
+    write_setting_i(sesskey, "BlinkStyle", conf_get_int(conf, CONF_blink_style));
     write_setting_i(sesskey, "X11Forward", conf_get_int(conf, CONF_x11_forward));
     write_setting_s(sesskey, "X11Display", conf_get_str(conf, CONF_x11_display));
     write_setting_i(sesskey, "X11AuthType", conf_get_int(conf, CONF_x11_auth));
@@ -1074,6 +1075,7 @@ void load_open_settings(void *sesskey, Conf *conf)
     gppi(sesskey, "LockSize", 0, conf, CONF_resize_action);
     gppi(sesskey, "BCE", 1, conf, CONF_bce);
     gppi(sesskey, "BlinkText", 0, conf, CONF_blinktext);
+    gppi(sesskey, "BlinkStyle", 0, conf, CONF_blink_style);
     gppi(sesskey, "X11Forward", 0, conf, CONF_x11_forward);
     gpps(sesskey, "X11Display", "", conf, CONF_x11_display);
     gppi(sesskey, "X11AuthType", X11_MIT, conf, CONF_x11_auth);

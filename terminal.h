@@ -145,6 +145,7 @@ struct terminal_tag {
     int cblinker;		       /* When blinking is the cursor on ? */
     int tblinker;		       /* When the blinking text is on */
     int blink_is_real;		       /* Actually blink blinking text */
+    int blink_style;		       /* Which blink style to use */
     int term_echoing;		       /* Does terminal want local echo? */
     int term_editing;		       /* Does terminal want local edit? */
     int sco_acs, save_sco_acs;	       /* CSI 10,11,12m -> OEM charset */

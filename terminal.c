@@ -1542,6 +1542,13 @@ void term_copy_stuff_from_conf(Terminal *term)
     term->scroll_on_disp = conf_get_int(term->conf, CONF_scroll_on_disp);
     term->scroll_on_key = conf_get_int(term->conf, CONF_scroll_on_key);
     term->xterm_256_colour = conf_get_int(term->conf, CONF_xterm_256_colour);
+    term->blink_style = conf_get_int(term->conf, CONF_blink_style);
+    switch (term->blink_style) {
+	default: term->blink_style = ATTR_CONCEAL; break;
+	case 1: term->blink_style = ATTR_DIM;  break;
+	case 2: term->blink_style = ATTR_REVERSE;  break;
+	case 3: term->blink_style = ATTR_BOLD;  break;
+    }
 
     /*
      * Parse the control-character escapes in the configured
@@ -4061,7 +4068,17 @@ static void term_out(Terminal *term)
 				    break;
 				  case 1:	/* enable bold */
 				    compatibility(VT100AVO);
+				    term->curr_attr &= ~ATTR_DIM;
 				    term->curr_attr |= ATTR_BOLD;
+				    break;
+				  case 2:	/* enable dim */
+				    compatibility(ANSI);
+				    term->curr_attr &= ~ATTR_BOLD;
+				    term->curr_attr |= ATTR_DIM;
+				    break;
+				  case 3:	/* enable italic */
+				    compatibility(OTHER);
+				    term->curr_attr |= ATTR_ITALIC;
 				    break;
 				  case 21:	/* (enable double underline) */
 				    compatibility(OTHER);
@@ -4075,28 +4092,28 @@ static void term_out(Terminal *term)
 				    break;
 				  case 6:	/* SCO light bkgrd */
 				    compatibility(SCOANSI);
-				    term->blink_is_real = FALSE;
-				    term->curr_attr |= ATTR_BLINK;
-				    term_schedule_tblink(term);
+				    term->curr_attr |= ATTR_BGBOLD;
 				    break;
 				  case 7:	/* enable reverse video */
 				    term->curr_attr |= ATTR_REVERSE;
 				    break;
-				  case 10:      /* SCO acs off */
+				  case 8:	/* enable concealed video */
+				    term->curr_attr |= ATTR_CONCEAL;
+				    break;
+				  case 10: case 11: case 12: case 13:
+					/* SCO acs: 0=off, 1..9 = on */
 				    compatibility(SCOANSI);
-				    if (term->no_remote_charset) break;
-				    term->sco_acs = 0; break;
-				  case 11:      /* SCO acs on */
-				    compatibility(SCOANSI);
-				    if (term->no_remote_charset) break;
-				    term->sco_acs = 1; break;
-				  case 12:      /* SCO acs on, |0x80 */
-				    compatibility(SCOANSI);
-				    if (term->no_remote_charset) break;
-				    term->sco_acs = 2; break;
-				  case 22:	/* disable bold */
+				    if (!term->no_remote_charset)
+					term->sco_acs = term->esc_args[i] -10;
+				    break;
+				  case 22:	/* disable bold & dim */
 				    compatibility2(OTHER, VT220);
 				    term->curr_attr &= ~ATTR_BOLD;
+				    term->curr_attr &= ~ATTR_DIM;
+				    break;
+				  case 23:	/* disable italic */
+				    compatibility(OTHER);
+				    term->curr_attr &= ~ATTR_ITALIC;
 				    break;
 				  case 24:	/* disable underline */
 				    compatibility2(OTHER, VT220);
@@ -4528,7 +4545,7 @@ static void term_out(Terminal *term)
 			break;
 		      case ANSI('E', '='):
 			compatibility(SCOANSI);
-			term->blink_is_real = (term->esc_args[0] >= 1);
+			term->blink_is_real = term->esc_args[0];
 			term_schedule_tblink(term);
 			break;
 		      case ANSI('F', '='):      /* set normal foreground */
@@ -5462,13 +5479,49 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 		selected = FALSE;
 	    tattr = (tattr ^ rv
 		     ^ (selected ? ATTR_REVERSE : 0));
+	    if ((tattr & ATTR_ITALIC))
+		tattr ^= ATTR_ITALIC|ATTR_REVERSE;
+	    if (selected && (tattr & ATTR_CONCEAL))
+		tattr ^= ATTR_CONCEAL|ATTR_REVERSE;
 
 	    /* 'Real' blinking ? */
 	    if (term->blink_is_real && (tattr & ATTR_BLINK)) {
-		if (term->has_focus && term->tblinker) {
-		    tchar = term->ucsdata->unitab_line[(unsigned char)' '];
-		}
 		tattr &= ~ATTR_BLINK;
+		if (term->has_focus && term->tblinker) {
+		    if (term->blink_style && term->blink_is_real<=1)
+			tattr ^= term->blink_style;
+		    else
+			tattr |= ATTR_CONCEAL;
+		}
+	    }
+
+	    if ((tattr & ATTR_BGBOLD)) {
+		int bgc = ((tattr & ATTR_BGMASK) >> ATTR_BGSHIFT);
+		if (bgc < 16) bgc |= 8;
+		else if (bgc >= 256) bgc |= 1;
+		tattr &= ~ATTR_BGMASK;
+		tattr &= ~ATTR_BGBOLD;
+		tattr |= (bgc << ATTR_BGSHIFT);
+	    }
+
+	    /* Conceal text */
+	    if (tattr & ATTR_CONCEAL)
+	    {
+		tchar = term->ucsdata->unitab_line[(unsigned char)' '];
+		tattr &= ~ATTR_CONCEAL;
+	    }
+
+	    if (tattr & ATTR_DIM) {
+		/* Dim colours. */
+static int dimmap[] = { 59,88,28,100,18,90,30,259 };
+		int fg = ((tattr & ATTR_FGMASK) >> ATTR_FGSHIFT);
+		if (fg < 8) fg = dimmap[fg];
+		else if (fg < 16) fg = fg - 8;
+		else fg = 259;
+
+		tattr &= ~ATTR_DIM;
+		tattr &= ~ATTR_FGMASK;
+		tattr |= (fg << ATTR_FGSHIFT);/* Use bold default BG */
 	    }
 
 	    /*

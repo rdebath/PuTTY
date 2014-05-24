@@ -1810,6 +1810,23 @@ void setup_config_box(struct controlbox *b, int midsession,
 		  HELPCTX(behaviour_closewarn),
 		  conf_checkbox_handler, I(CONF_warn_on_close));
 
+    /* I'l like to put this on the appearance tab, but that's far too full. */
+    s = ctrl_getset(b, "Window/Behaviour", "blinking",
+		    "Adjust the use of the blinking text");
+    ctrl_checkbox(s, "Enable blinking text", 'n',
+		  HELPCTX(terminal_blink),
+		  conf_checkbox_handler, I(CONF_blinktext));
+
+    ctrl_radiobuttons(s, "Text blinking style", 'b', 4,
+		      HELPCTX(no_help),
+		      conf_radiobutton_handler,
+		      I(CONF_blink_style),
+		      "PC Style", I(0),
+		      "VT100", I(1),
+		      "Inverse", I(2),
+		      "Bold", I(3),
+		      NULL);
+
     /*
      * The Window/Translation panel.
      */

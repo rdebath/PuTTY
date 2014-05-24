@@ -107,15 +107,19 @@ typedef struct terminal_tag Terminal;
  */
 #define UCSWIDE	     0xDFFF
 
-#define ATTR_NARROW  0x800000U
-#define ATTR_WIDE    0x400000U
-#define ATTR_BOLD    0x040000U
-#define ATTR_UNDER   0x080000U
-#define ATTR_REVERSE 0x100000U
-#define ATTR_BLINK   0x200000U
-#define ATTR_FGMASK  0x0001FFU
-#define ATTR_BGMASK  0x03FE00U
-#define ATTR_COLOURS 0x03FFFFU
+#define ATTR_NARROW  0x0800000U
+#define ATTR_WIDE    0x0400000U
+#define ATTR_BOLD    0x0040000U
+#define ATTR_UNDER   0x0080000U
+#define ATTR_REVERSE 0x0100000U
+#define ATTR_BLINK   0x0200000U
+#define ATTR_DIM     0x1000000U
+#define ATTR_CONCEAL 0x2000000U
+#define ATTR_BGBOLD  0x4000000U
+#define ATTR_ITALIC  0x8000000U
+#define ATTR_FGMASK  0x00001FFU
+#define ATTR_BGMASK  0x003FE00U
+#define ATTR_COLOURS 0x003FFFFU
 #define ATTR_FGSHIFT 0
 #define ATTR_BGSHIFT 9
 
@@ -827,6 +831,7 @@ void cleanup_exit(int);
     X(INT, NONE, resize_action) \
     X(INT, NONE, bce) \
     X(INT, NONE, blinktext) \
+    X(INT, NONE, blink_style) \
     X(INT, NONE, win_name_always) \
     X(INT, NONE, width) \
     X(INT, NONE, height) \
