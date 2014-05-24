@@ -3849,7 +3849,7 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
     struct draw_ctx *dctx = (struct draw_ctx *)ctx;
     struct gui_data *inst = dctx->inst;
     int ncombining;
-    int nfg, nbg, t, fontid, shadow, rlen, widefactor, bold;
+    int nfg, nbg, t, fontid, shadow, rlen, widefactor, bold, order;
     int fg_dim = (attr & ATTR_DIM), bg_dim = 0;
     int monochrome =
         gdk_visual_get_depth(gtk_widget_get_visual(inst->area)) == 1;
@@ -3865,29 +3865,39 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
 
     nfg = ((monochrome ? ATTR_DEFFG : (attr & ATTR_FGMASK)) >> ATTR_FGSHIFT);
     nbg = ((monochrome ? ATTR_DEFBG : (attr & ATTR_BGMASK)) >> ATTR_BGSHIFT);
-    if (!!(attr & ATTR_REVERSE) ^ (monochrome && (attr & TATTR_ACTCURS))) {
-        struct optionalrgb trgb;
 
-	t = nfg;
-	nfg = nbg;
-	nbg = t;
+    for(order=0; order<2; order++)
+    {
+	if (!inst->term || inst->term->blink_style == order )
+	{
+	    if (!!(attr & ATTR_REVERSE) ^ (monochrome && (attr & TATTR_ACTCURS))) {
+		struct optionalrgb trgb;
 
-	t = fg_dim;
-	fg_dim = bg_dim;
-	bg_dim = t;
+		t = nfg;
+		nfg = nbg;
+		nbg = t;
 
-        trgb = truecolour.fg;
-        truecolour.fg = truecolour.bg;
-        truecolour.bg = trgb;
+		t = fg_dim;
+		fg_dim = bg_dim;
+		bg_dim = t;
+
+		trgb = truecolour.fg;
+		truecolour.fg = truecolour.bg;
+		truecolour.bg = trgb;
+	    }
+	} else {
+	    if ((inst->bold_style & 2) && (attr & ATTR_BOLD)) {
+		if (nfg < 16) nfg |= 8;
+		else if (nfg >= 256) nfg |= 1;
+	    }
+	    if ((inst->bold_style & 2) && !inst->term->blink_style &&
+		    (attr & ATTR_BLINK)) {
+		if (nbg < 16) nbg |= 8;
+		else if (nbg >= 256) nbg |= 1;
+	    }
+	}
     }
-    if ((inst->bold_style & 2) && (attr & ATTR_BOLD)) {
-	if (nfg < 16) nfg |= 8;
-	else if (nfg >= 256) nfg |= 1;
-    }
-    if ((inst->bold_style & 2) && (attr & ATTR_BLINK)) {
-	if (nbg < 16) nbg |= 8;
-	else if (nbg >= 256) nbg |= 1;
-    }
+
     if ((attr & TATTR_ACTCURS) && !monochrome) {
         truecolour.fg = truecolour.bg = optionalrgb_none;
 	nfg = 260;

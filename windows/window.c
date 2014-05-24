@@ -3338,7 +3338,7 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
 		      unsigned long attr, int lattr, truecolour truecolour)
 {
     COLORREF fg, bg, t;
-    int nfg, nbg, nfont;
+    int nfg, nbg, nfont, order;
     HDC hdc = ctx;
     RECT line_box;
     int force_manual_underline = 0;
@@ -3450,25 +3450,34 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
     another_font(nfont);
     if (!fonts[nfont])
 	nfont = FONT_NORMAL;
-    if (attr & ATTR_REVERSE) {
-        struct optionalrgb trgb;
 
-	t = nfg;
-	nfg = nbg;
-	nbg = t;
+    for (order=0; order<2; order++)
+    {
+	if (!term || term->blink_style == order)
+	{
+	    if (attr & ATTR_REVERSE) {
+		struct optionalrgb trgb;
 
-        trgb = truecolour.fg;
-        truecolour.fg = truecolour.bg;
-        truecolour.bg = trgb;
+		t = nfg;
+		nfg = nbg;
+		nbg = t;
+
+		trgb = truecolour.fg;
+		truecolour.fg = truecolour.bg;
+		truecolour.bg = trgb;
+	    }
+	} else {
+	    if (bold_colours && (attr & ATTR_BOLD) && !is_cursor) {
+		if (nfg < 16) nfg |= 8;
+		else if (nfg >= 256) nfg |= 1;
+	    }
+	    if (bold_colours && !term->blink_style && (attr & ATTR_BLINK)) {
+		if (nbg < 16) nbg |= 8;
+		else if (nbg >= 256) nbg |= 1;
+	    }
+	}
     }
-    if (bold_colours && (attr & ATTR_BOLD) && !is_cursor) {
-	if (nfg < 16) nfg |= 8;
-	else if (nfg >= 256) nfg |= 1;
-    }
-    if (bold_colours && (attr & ATTR_BLINK)) {
-	if (nbg < 16) nbg |= 8;
-	else if (nbg >= 256) nbg |= 1;
-    }
+
     if (truecolour.fg.enabled) {
 	if (!pal)
 	    fg = RGB(truecolour.fg.r, truecolour.fg.g, truecolour.fg.b);

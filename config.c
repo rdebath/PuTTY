@@ -1809,7 +1809,13 @@ void setup_config_box(struct controlbox *b, int midsession,
     ctrl_checkbox(s, "Disable bidirectional text display",
 		  'd', HELPCTX(features_bidi), conf_checkbox_handler,
 		  I(CONF_bidi));
-
+    ctrl_radiobuttons(s, "Attribute merging hardware emulation", 'y', 2,
+		      HELPCTX(no_help),
+		      conf_radiobutton_handler,
+		      I(CONF_blink_style),
+		      "PCVGA Emulation", I(0),
+		      "VT100 Emulation", I(1),
+		      NULL);
     /*
      * The Window panel.
      */

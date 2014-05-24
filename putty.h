@@ -117,6 +117,9 @@
 #define ATTR_BGMASK  0x003FE00U
 #define ATTR_COLOURS 0x003FFFFU
 #define ATTR_DIM     0x1000000U
+#define ATTR_CONCEAL 0x2000000U
+#define ATTR_BGBOLD  0x4000000U
+#define ATTR_ITALIC  0x8000000U
 #define ATTR_FGSHIFT 0
 #define ATTR_BGSHIFT 9
 
@@ -879,6 +882,7 @@ void cleanup_exit(int);
     X(INT, NONE, resize_action) \
     X(INT, NONE, bce) \
     X(INT, NONE, blinktext) \
+    X(INT, NONE, blink_style) \
     X(INT, NONE, win_name_always) \
     X(INT, NONE, width) \
     X(INT, NONE, height) \
