@@ -2712,13 +2712,6 @@ static void toggle_mode(Terminal *term, int mode, int query, int state)
 	    break;
 	  case 2:		       /* DECANM: VT52 mode */
 	    term->vt52_mode = !state;
-	    if (term->vt52_mode) {
-		term->blink_is_real = FALSE;
-		term->vt52_bold = FALSE;
-	    } else {
-		term->blink_is_real = term->blinktext;
-	    }
-	    term_schedule_tblink(term);
 	    break;
 	  case 3:		       /* DECCOLM: 80/132 columns */
 	    deselect(term);
@@ -3089,7 +3082,7 @@ static void term_out_litchar(Terminal *term, unsigned long c)
     if (term->curs.x == term->cols) {
 	term->curs.x--;
 	term->wrapnext = TRUE;
-	if (term->wrap && term->vt52_mode) {
+	if (term->wrap == 2) {
 	    cline->lattr |= LATTR_WRAPPED;
 	    if (term->curs.y == term->marg_b)
 		scroll(term, term->marg_t, term->marg_b, 1, TRUE);
@@ -4939,8 +4932,6 @@ static void term_out(Terminal *term)
 		     *     emulation.
 		     */
 		    term->vt52_mode = FALSE;
-		    term->blink_is_real = term->blinktext;
-		    term_schedule_tblink(term);
 		    break;
 #if 0
 		  case '^':
@@ -5014,9 +5005,17 @@ static void term_out(Terminal *term)
 		    /* compatibility(ATARI) */
 		    term->curr_attr &= ~ATTR_REVERSE;
 		    break;
+		  case 'r':
+		    /* compatibility(ATARI) MiNT */
+		    term->curr_attr |= ATTR_BLINK;
+		    break;
+		  case 's':
+		    /* compatibility(ATARI) MiNT */
+		    term->curr_attr &= ~ATTR_BLINK;
+		    break;
 		  case 'v':	       /* wrap Autowrap on - Wyse style */
 		    /* compatibility(ATARI) */
-		    term->wrap = 1;
+		    term->wrap = 2;
 		    break;
 		  case 'w':	       /* Autowrap off */
 		    /* compatibility(ATARI) */
@@ -5025,7 +5024,6 @@ static void term_out(Terminal *term)
 
 		  case 'R':
 		    /* compatibility(OTHER) */
-		    term->vt52_bold = FALSE;
 		    term->curr_attr = ATTR_DEFAULT;
 		    set_erase_char(term);
 		    break;
@@ -5039,12 +5037,10 @@ static void term_out(Terminal *term)
 		    break;
 		  case 'U':
 		    /* compatibility(VI50) */
-		    term->vt52_bold = TRUE;
 		    term->curr_attr |= ATTR_BOLD;
 		    break;
 		  case 'T':
 		    /* compatibility(VI50) */
-		    term->vt52_bold = FALSE;
 		    term->curr_attr &= ~ATTR_BOLD;
 		    break;
 #endif
@@ -5063,7 +5059,6 @@ static void term_out(Terminal *term)
 	      case VT52_FG:
 		term->termstate = TOPLEVEL;
 		term->curr_attr &= ~ATTR_FGMASK;
-		term->curr_attr &= ~ATTR_BOLD;
 		term->curr_attr |= (c & 0xF) << ATTR_FGSHIFT;
 		term->fg_colour = 0;
 		set_erase_char(term);
@@ -5071,7 +5066,6 @@ static void term_out(Terminal *term)
 	      case VT52_BG:
 		term->termstate = TOPLEVEL;
 		term->curr_attr &= ~ATTR_BGMASK;
-		term->curr_attr &= ~ATTR_BLINK;
 		term->curr_attr |= (c & 0xF) << ATTR_BGSHIFT;
 		term->bg_colour = 0;
 		set_erase_char(term);

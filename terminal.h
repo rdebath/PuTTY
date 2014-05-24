@@ -148,7 +148,6 @@ struct terminal_tag {
     int term_echoing;		       /* Does terminal want local echo? */
     int term_editing;		       /* Does terminal want local edit? */
     int sco_acs, save_sco_acs;	       /* CSI 10,11,12m -> OEM charset */
-    int vt52_bold;		       /* Force bold on non-bold colours */
     int utf;			       /* Are we in toggleable UTF-8 mode? */
     int utf_state;		       /* Is there a pending UTF-8 character */
     int utf_char;		       /* and what is it so far. */
