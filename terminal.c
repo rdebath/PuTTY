@@ -53,6 +53,9 @@
 #define CBLINK_DELAY    (CURSORBLINK) /* ticks between cursor blinks */
 #define VBELL_DELAY     (VBELL_TIMEOUT) /* visual bell timeout in ticks */
 
+#define enable_charset_modes(term) (term->no_remote_charset == 0 && \
+                                    (!in_utf(term) || term->utf == 2 ))
+
 #define compatibility(x) \
     if ( ((CL_##x)&term->compatibility_level) == 0 ) { 	\
        term->termstate=TOPLEVEL;			\
@@ -3439,11 +3442,13 @@ static void term_out(Terminal *term)
 		break;
 	      case '\016':	      /* LS1: Locking-shift one */
 		compatibility(VT100);
-		term->cset = 1;
+		if (enable_charset_modes(term))
+		    term->cset = 1;
 		break;
 	      case '\017':	      /* LS0: Locking-shift zero */
 		compatibility(VT100);
-		term->cset = 0;
+		if (enable_charset_modes(term))
+		    term->cset = 0;
 		break;
 	      case '\033':	      /* ESC: Escape */
 		if (term->vt52_mode)
@@ -3685,55 +3690,55 @@ static void term_out(Terminal *term)
 		  /* GZD4: G0 designate 94-set */
 		  case ANSI('A', '('):
 		    compatibility(VT100);
-		    if (!term->no_remote_charset)
+		    if (enable_charset_modes(term))
 			term->cset_attr[0] = LCHAR_UKASCII;
 		    break;
 		  case ANSI('B', '('):
 		    compatibility(VT100);
-		    if (!term->no_remote_charset)
+		    if (enable_charset_modes(term))
 			term->cset_attr[0] = LCHAR_ASCII;
 		    break;
 		  case ANSI('0', '('):
 		    compatibility(VT100);
-		    if (!term->no_remote_charset)
+		    if (enable_charset_modes(term))
 			term->cset_attr[0] = LCHAR_LINEDRW;
 		    break;
 		  case ANSI('U', '('): 
 		    compatibility(OTHER);
-		    if (!term->no_remote_charset)
+		    if (enable_charset_modes(term))
 			term->cset_attr[0] = LCHAR_SCOACS;
 		    break;
 		  /* G1D4: G1-designate 94-set */
 		  case ANSI('A', ')'):
 		    compatibility(VT100);
-		    if (!term->no_remote_charset)
+		    if (enable_charset_modes(term))
 			term->cset_attr[1] = LCHAR_UKASCII;
 		    break;
 		  case ANSI('B', ')'):
 		    compatibility(VT100);
-		    if (!term->no_remote_charset)
+		    if (enable_charset_modes(term))
 			term->cset_attr[1] = LCHAR_ASCII;
 		    break;
 		  case ANSI('0', ')'):
 		    compatibility(VT100);
-		    if (!term->no_remote_charset)
+		    if (enable_charset_modes(term))
 			term->cset_attr[1] = LCHAR_LINEDRW;
 		    break;
 		  case ANSI('U', ')'): 
 		    compatibility(OTHER);
-		    if (!term->no_remote_charset)
+		    if (enable_charset_modes(term))
 			term->cset_attr[1] = LCHAR_SCOACS;
 		    break;
 		  /* DOCS: Designate other coding system */
 		  case ANSI('8', '%'):	/* Old Linux code */
 		  case ANSI('G', '%'):
 		    compatibility(OTHER);
-		    if (!term->no_remote_charset)
+		    if (enable_charset_modes(term))
 			term->utf = 1;
 		    break;
 		  case ANSI('@', '%'):
 		    compatibility(OTHER);
-		    if (!term->no_remote_charset)
+		    if (enable_charset_modes(term))
 			term->utf = 0;
 		    break;
 		}
@@ -4119,7 +4124,7 @@ static void term_out(Terminal *term)
 				  case 10: case 11: case 12: case 13:
 					/* SCO acs: 0=off, 1..9 = on */
 				    compatibility(SCOANSI);
-				    if (!term->no_remote_charset)
+				    if (enable_charset_modes(term))
 					term->sco_acs = term->esc_args[i] -10;
 				    break;
 				  case 22:	/* disable bold & dim */
@@ -4912,10 +4917,12 @@ static void term_out(Terminal *term)
 		     *
 		     */
 		  case 'F':
-		    term->cset_attr[term->cset = 0] = LCHAR_LINEDRW;
+		    if (enable_charset_modes(term))
+			term->cset_attr[term->cset = 0] = LCHAR_LINEDRW;
 		    break;
 		  case 'G':
-		    term->cset_attr[term->cset = 0] = LCHAR_ASCII;
+		    if (enable_charset_modes(term))
+			term->cset_attr[term->cset = 0] = LCHAR_ASCII;
 		    break;
 		  case 'H':
 		    move(term, 0, 0, 0);
