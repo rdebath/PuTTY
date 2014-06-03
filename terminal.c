@@ -111,6 +111,7 @@ static void scroll(Terminal *, int, int, int, int);
 #ifdef OPTIMISE_SCROLL
 static void scroll_display(Terminal *, int, int, int);
 #endif /* OPTIMISE_SCROLL */
+static void set_truecolour_attr(Terminal *, int, int, int, int);
 
 static termline *newline(Terminal *term, int cols, int bce)
 {
@@ -3966,6 +3967,14 @@ static void term_out(Terminal *term)
 					     << ATTR_FGSHIFT);
 					i += 2;
 				    }
+				    if (i+4 < term->esc_nargs &&
+					term->esc_args[i+1] == 2) {
+					set_truecolour_attr(term, 1,
+					    term->esc_args[i+2],
+					    term->esc_args[i+3],
+					    term->esc_args[i+4]);
+					i += 4;
+				    }
 				    break;
 				  case 48:   /* xterm 256-colour mode */
 				    if (i+2 < term->esc_nargs &&
@@ -3975,6 +3984,14 @@ static void term_out(Terminal *term)
 					    ((term->esc_args[i+2] & 0xFF)
 					     << ATTR_BGSHIFT);
 					i += 2;
+				    }
+				    if (i+4 < term->esc_nargs &&
+					term->esc_args[i+1] == 2) {
+					set_truecolour_attr(term, 0,
+					    term->esc_args[i+2],
+					    term->esc_args[i+3],
+					    term->esc_args[i+4]);
+					i += 4;
 				    }
 				    break;
 				}
@@ -6555,5 +6572,66 @@ int term_get_userpass_input(Terminal *term, prompts_t *p,
 	sfree(s);
 	p->data = NULL;
 	return +1; /* all done */
+    }
+}
+
+static void
+set_truecolour_attr(Terminal * term, int fg, int r, int g, int b)
+{
+    int best_diff = -1, nearest_static = 0;
+
+    /*
+     * Annoyingly the 6x6x6 cube that XTerm uses by default (and so our
+     * cube) isn't the websafe colours. This means the standard method
+     * of calculating the best match won't work, but I can do better
+     * than xterm does because we don't ever change the mapping.
+     */
+
+    {
+	int nr, ng, nb;
+
+	nr = (r-36)/40; if (nr == 0) nr = (r+47)/95;
+	ng = (g-36)/40; if (ng == 0) ng = (g+47)/95;
+	nb = (b-36)/40; if (nb == 0) nb = (b+47)/95;
+
+	nearest_static = 16 + nb + ng * 6 + nr * 36;
+
+	if (nr == ng && ng == nb) { /* If it's grey */
+	    int tc, tg;
+	    int tw, nw;
+	    tw = (r+g+b)/3; nw = 232 + (tw-4)/10; if (nw > 255) nw = 255;
+
+	    tc = nr ? nr * 40 + 55 : 0;
+	    tg = (nw-232) * 10 + 8;
+
+	    if ( (tc-tw)*(tc-tw) >= (tg-tw)*(tg-tw) )
+		nearest_static = nw;
+	}
+
+	if (nearest_static<232) {
+	    int i = nearest_static-16;
+	    nr = i / 36; ng = (i / 6) % 6; nb = i % 6;
+	    nr = nr ? nr * 40 + 55 : 0;
+	    ng = ng ? ng * 40 + 55 : 0;
+	    nb = nb ? nb * 40 + 55 : 0;
+	} else {
+	    int i = nearest_static-232;
+	    nr=ng=nb = i * 10 + 8;
+	}
+
+	{
+	    int d;
+	    d = nr-r; best_diff += d*d;
+	    d = ng-g; best_diff += d*d;
+	    d = nb-b; best_diff += d*d;
+	}
+    }
+
+    if (fg) {
+	term->curr_attr &= ~ATTR_FGMASK;
+	term->curr_attr |= (nearest_static << ATTR_FGSHIFT);
+    } else {
+	term->curr_attr &= ~ATTR_BGMASK;
+	term->curr_attr |= (nearest_static << ATTR_BGSHIFT);
     }
 }
