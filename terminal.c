@@ -3861,7 +3861,21 @@ static void term_out(Terminal *term)
 			else
 			    term->esc_args[term->esc_nargs - 1] = UINT_MAX;
 		    }
-		} else if (c == ';') {
+		} else if (c == ';' || c == ':') {
+		    if (c == ':') {
+			/* The ':' is interpreted as an alias for ';'
+			 * But it seems foolish to allow it for all sequences
+			 * when it's only, ever, going to be valid for SGR.
+			 * So the ':' is *also* put into esc_query to note
+			 * that it was used. But, if there is also another
+			 * special character someone is really confused;
+			 * make sure it's not us.
+			 */
+			if (term->esc_query == 0 || term->esc_query == c)
+			    term->esc_query = c;
+			else
+			    term->esc_query = -1;
+		    }
 		    if (term->esc_nargs < ARGS_MAX)
 			term->esc_args[term->esc_nargs++] = ARG_DEFAULT;
 		} else if (c < '@') {
@@ -4153,6 +4167,7 @@ static void term_out(Terminal *term)
 			}
 			break;
 		      case 'm':       /* SGR: set graphics rendition */
+		      case ANSI('m',':'): /* Colon args allowed */
 			{
 			    /* 
 			     * A VT100 without the AVO only had one
