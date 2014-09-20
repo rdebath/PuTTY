@@ -109,7 +109,7 @@ static int process_clipdata(HGLOBAL clipdata, int unicode);
 /* Window layout information */
 static void reset_window(int);
 static int extra_width, extra_height;
-static int font_width, font_height, font_dualwidth, font_varpitch;
+static int font_width, font_height, font_varpitch;
 static int offset_width, offset_height;
 static int was_zoomed = 0;
 static int prev_rows, prev_cols;
@@ -1438,12 +1438,10 @@ static void general_textout(HDC hdc, int x, int y, CONST RECT *lprc,
 	 * function.
 	 */
 	if (rtl) {
-	    exact_textout(hdc, xp, y, lprc, lpString+i, j-i,
-                          font_varpitch ? NULL : lpDx+i, opaque);
+	    exact_textout(hdc, xp, y, lprc, lpString+i, j-i, lpDx+i, opaque);
 	} else {
 	    ExtTextOutW(hdc, xp, y, ETO_CLIPPED | (opaque ? ETO_OPAQUE : 0),
-			lprc, lpString+i, j-i,
-                        font_varpitch ? NULL : lpDx+i);
+			lprc, lpString+i, j-i, lpDx+i);
 	}
 
 	i = j;
@@ -1472,7 +1470,6 @@ static int get_font_width(HDC hdc, const TEXTMETRIC *tm)
         int j;
 
         font_varpitch = TRUE;
-        font_dualwidth = TRUE;
         if (GetCharABCWidthsFloat(hdc, FIRST, LAST, widths)) {
             ret = 0;
             for (j = 0; j < lenof(widths); j++) {
@@ -1564,11 +1561,9 @@ static void init_fonts(int pick_width, int pick_height)
 
     /* Note that the TMPF_FIXED_PITCH bit is defined upside down :-( */
     if (!(tm.tmPitchAndFamily & TMPF_FIXED_PITCH)) {
-        font_varpitch = FALSE;
-        font_dualwidth = (tm.tmAveCharWidth != tm.tmMaxCharWidth);
+        font_varpitch = (tm.tmAveCharWidth != tm.tmMaxCharWidth);
     } else {
         font_varpitch = TRUE;
-        font_dualwidth = TRUE;
     }
     if (pick_width == 0 || pick_height == 0) {
 	font_height = tm.tmHeight;
@@ -3478,12 +3473,9 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
     int fnt_width, char_width;
     int text_adjust = 0;
     int xoffset = 0;
-    int maxlen, remaining, opaque;
     int is_cursor = FALSE;
     static int *lpDx = NULL;
     static int lpDx_len = 0;
-    int *lpDx_maybe;
-    int len2; /* for SURROGATE PAIR */
 
     lattr &= LATTR_MODE;
 
@@ -3645,50 +3637,24 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
     if (line_box.right > font_width*term->cols+offset_width)
 	line_box.right = font_width*term->cols+offset_width;
 
-    if (font_varpitch) {
-        /*
-         * If we're using a variable-pitch font, we unconditionally
-         * draw the glyphs one at a time and centre them in their
-         * character cells (which means in particular that we must
-         * disable the lpDx mechanism). This gives slightly odd but
-         * generally reasonable results.
-         */
-        xoffset = char_width / 2;
-        SetTextAlign(hdc, TA_TOP | TA_CENTER | TA_NOUPDATECP);
-        lpDx_maybe = NULL;
-        maxlen = 1;
-    } else {
-        /*
-         * In a fixed-pitch font, we draw the whole string in one go
-         * in the normal way.
-         */
-        xoffset = 0;
-        SetTextAlign(hdc, TA_TOP | TA_LEFT | TA_NOUPDATECP);
-        lpDx_maybe = lpDx;
-        maxlen = len;
-    }
+    /*
+     * We are drawing the string in one go, but fonts (especially ones
+     * that are explicitly variable pitch) don't always match the cell
+     * pattern exactly. So we use lpDx to force the issue. A font that
+     * is mostly fixed pitch will look fine; a true proportional font
+     * will be ugly.
+     * NOTE: There will be debris between the cells of the individual
+     * characters but as the paint routine in terminal.c now makes sure
+     * that it redraws all of any string that it previously drew as a
+     * single run when making any change the debris will be cleaned up.
+     */
+    xoffset = 0;
+    SetTextAlign(hdc, TA_TOP | TA_LEFT | TA_NOUPDATECP);
 
-    opaque = TRUE;                     /* start by erasing the rectangle */
-    for (remaining = len; remaining > 0;
-         text += len, remaining -= len, x += char_width * len2) {
-        len = (maxlen < remaining ? maxlen : remaining);
-        /* don't divide SURROGATE PAIR and VARIATION SELECTOR */
-        len2 = len;
-        if (maxlen == 1) {
-            if (remaining >= 1 && IS_SURROGATE_PAIR(text[0], text[1]))
-                len++;
-            if (remaining-len >= 1 && IS_LOW_VARSEL(text[len]))
-                len++;
-            else if (remaining-len >= 2 &&
-                     IS_HIGH_VARSEL(text[len], text[len+1]))
-                len += 2;
-        }
-
+    {
 	if (len > lpDx_len) {
 	    lpDx_len = len * 9 / 8 + 16;
 	    lpDx = sresize(lpDx, lpDx_len, int);
-
-	    if (lpDx_maybe) lpDx_maybe = lpDx;
 	}
 
         {
@@ -3752,15 +3718,15 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
 
             ExtTextOutW(hdc, x + xoffset,
                         y - font_height * (lattr == LATTR_BOT) + text_adjust,
-                        ETO_CLIPPED | (opaque ? ETO_OPAQUE : 0),
+                        ETO_CLIPPED | ETO_OPAQUE,
                         &line_box, uni_buf, nlen,
-                        lpDx_maybe);
+                        lpDx);
             if (bold_font_mode == BOLD_SHADOW && (attr & ATTR_BOLD)) {
                 SetBkMode(hdc, TRANSPARENT);
                 ExtTextOutW(hdc, x + xoffset - 1,
                             y - font_height * (lattr ==
                                                LATTR_BOT) + text_adjust,
-                            ETO_CLIPPED, &line_box, uni_buf, nlen, lpDx_maybe);
+                            ETO_CLIPPED, &line_box, uni_buf, nlen, lpDx);
             }
 
             lpDx[0] = -1;
@@ -3778,8 +3744,8 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
 
             ExtTextOut(hdc, x + xoffset,
                        y - font_height * (lattr == LATTR_BOT) + text_adjust,
-                       ETO_CLIPPED | (opaque ? ETO_OPAQUE : 0),
-                       &line_box, directbuf, len, lpDx_maybe);
+                       ETO_CLIPPED | ETO_OPAQUE,
+                       &line_box, directbuf, len, lpDx);
             if (bold_font_mode == BOLD_SHADOW && (attr & ATTR_BOLD)) {
                 SetBkMode(hdc, TRANSPARENT);
 
@@ -3795,7 +3761,7 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
                 ExtTextOut(hdc, x + xoffset - 1,
                            y - font_height * (lattr ==
                                               LATTR_BOT) + text_adjust,
-                           ETO_CLIPPED, &line_box, directbuf, len, lpDx_maybe);
+                           ETO_CLIPPED, &line_box, directbuf, len, lpDx);
             }
         } else {
             /* And 'normal' unicode characters */
@@ -3816,7 +3782,7 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
             general_textout(hdc, x + xoffset,
                             y - font_height * (lattr==LATTR_BOT) + text_adjust,
                             &line_box, wbuf, len, lpDx,
-                            opaque && !(attr & TATTR_COMBINING));
+                            !(attr & TATTR_COMBINING));
 
             /* And the shadow bold hack. */
             if (bold_font_mode == BOLD_SHADOW && (attr & ATTR_BOLD)) {
@@ -3824,7 +3790,7 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
                 ExtTextOutW(hdc, x + xoffset - 1,
                             y - font_height * (lattr ==
                                                LATTR_BOT) + text_adjust,
-                            ETO_CLIPPED, &line_box, wbuf, len, lpDx_maybe);
+                            ETO_CLIPPED, &line_box, wbuf, len, lpDx);
             }
         }
 
@@ -3833,7 +3799,6 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
          * rectangle.
          */
         SetBkMode(hdc, TRANSPARENT);
-        opaque = FALSE;
     }
     if (lattr != LATTR_TOP && (force_manual_underline ||
 			       (und_mode == UND_LINE
@@ -3981,7 +3946,7 @@ int char_width(Context ctx, int uc) {
     /* If the font max is the same as the font ave width then this
      * function is a no-op.
      */
-    if (!font_dualwidth) return 1;
+    if (!font_varpitch) return 1;
 
     switch (uc & CSET_MASK) {
       case CSET_ASCII:
