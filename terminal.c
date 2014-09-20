@@ -5274,6 +5274,18 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 #endif /* OPTIMISE_SCROLL */
     termchar *newline;
 
+static time_t last_tick_count;
+static int lastrun = 0;
+    time_t now;
+
+    /* After a do_paint of > 50ms wait at least 50ms more */
+    now = GETTICKCOUNT();
+    if (lastrun > 50 && now < last_tick_count+50) {
+	term_schedule_update(term);
+	return;
+    }
+    last_tick_count = now;
+
     chlen = 1024;
     ch = snewn(chlen, wchar_t);
 
@@ -5716,6 +5728,9 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 
 	unlineptr(ldata);
     }
+
+    lastrun = GETTICKCOUNT() - last_tick_count + 1;
+    last_tick_count = GETTICKCOUNT();
 
     sfree(newline);
     sfree(ch);
