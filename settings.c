@@ -1078,7 +1078,7 @@ void load_open_settings(void *sesskey, Conf *conf)
     gppi(sesskey, "FontQuality", FQ_DEFAULT, conf, CONF_font_quality);
     gppi(sesskey, "FontVTMode", VT_UNICODE, conf, CONF_vtmode);
     gppi(sesskey, "UseSystemColours", 0, conf, CONF_system_colour);
-    gppi(sesskey, "TryPalette", 0, conf, CONF_try_palette);
+    gppi(sesskey, "TryPalette", 1, conf, CONF_try_palette);
     gppi(sesskey, "ANSIColour", 1, conf, CONF_ansi_colour);
     gppi(sesskey, "Xterm256Colour", 1, conf, CONF_xterm_256_colour);
     gppi(sesskey, "TrueColour", 1, conf, CONF_true_colour);

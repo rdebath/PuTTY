@@ -95,6 +95,7 @@ static int TranslateKey(UINT message, WPARAM wParam, LPARAM lParam,
 static void conftopalette(void);
 static void systopalette(void);
 static void init_palette(void);
+static void reinit_palette(void);
 static void init_fonts(int, int);
 static void another_font(int);
 static void deinit_fonts(void);
@@ -1199,12 +1200,62 @@ static void internal_set_colour(int i, int r, int g, int b)
     colours_rgb[i].b = b;
 }
 
+/* The palette is really in the wrong order; Windows implicitly assumes
+ * the start of the palette is the most important, but the default colours
+ * are at the end ... let's reorder them, That way if we happen to be
+ * on a (now ancient) 256 colour display we'll get the default colours
+ * (6) the ansi colours (16) and the 6x6x6 colour cube (216) and finally
+ * the greyscale ramp (24).
+ *
+ * There are 236 entries available, so this is too many, I have to
+ * 'collapse' black and white into the system entries to get just the
+ * cube and leave the greyscale ramp off the end.
+ *
+ * Keeping the greyscale would also be possible, but compacting the cube
+ * is more difficult, the ramp OTOH is served by the greys already in
+ * the cube.
+ *
+ * If the ansi colours are mapped to the same as the system colours this
+ * will free up enough entries to get the full greyscale ramp. (There are
+ * several other overlaps)
+ */
+static void set_logpal_entry(int i, int r, int g, int b)
+{
+    i = (i+6) % NALLCOLOURS;
+    logpal->palPalEntry[i].peRed = r;
+    logpal->palPalEntry[i].peGreen = g;
+    logpal->palPalEntry[i].peBlue = b;
+    logpal->palPalEntry[i].peFlags = PC_NOCOLLAPSE;
+
+    if ((r == 0 || r == 255) &&
+	(g == 0 || g == 255) &&
+	(b == 0 || b == 255) )
+	logpal->palPalEntry[i].peFlags = 0;
+
+    if ((r == 0 || r == 128) &&
+	(g == 0 || g == 128) &&
+	(b == 0 || b == 128) )
+	logpal->palPalEntry[i].peFlags = 0;
+
+    if (r == 192 && g == 192 && b == 192)
+	logpal->palPalEntry[i].peFlags = 0;
+}
+
 /*
  * Set up the colour palette.
  */
 static void init_palette(void)
 {
     int i;
+    for (i = 0; i < NALLCOLOURS; i++)
+        internal_set_colour(i, defpal[i].rgbtRed,
+                            defpal[i].rgbtGreen, defpal[i].rgbtBlue);
+    reinit_palette();
+}
+
+static void reinit_palette(void)
+{
+    int i, r=42;
     HDC hdc = GetDC(hwnd);
     if (hdc) {
 	if (conf_get_int(conf, CONF_try_palette) &&
@@ -1219,10 +1270,23 @@ static void init_palette(void)
 	    logpal->palVersion = 0x300;
 	    logpal->palNumEntries = NALLCOLOURS;
 	    for (i = 0; i < NALLCOLOURS; i++) {
-		logpal->palPalEntry[i].peRed = defpal[i].rgbtRed;
-		logpal->palPalEntry[i].peGreen = defpal[i].rgbtGreen;
-		logpal->palPalEntry[i].peBlue = defpal[i].rgbtBlue;
-		logpal->palPalEntry[i].peFlags = PC_NOCOLLAPSE;
+		set_logpal_entry(i, GetRValue(colours[i]),
+				    GetGValue(colours[i]),
+				    GetBValue(colours[i]));
+	    }
+	    /* Scramble the order of the 6x6x6 cube, this means that if
+	     * Windows only lets us have some of the colours we should
+	     * get a good selection */
+	    for (i = 22; i < 22+216; i++) {
+		int j;
+		for(j=i+1; j< 22+216; j++) {
+		    PALETTEENTRY tmp;
+		    r *= 75; r += j; r += r / 65537;
+		    if (r&0x100) continue;
+		    tmp = logpal->palPalEntry[i];
+		    logpal->palPalEntry[i] = logpal->palPalEntry[j];
+		    logpal->palPalEntry[j] = tmp;
+		}
 	    }
 	    pal = CreatePalette(logpal);
 	    if (pal) {
@@ -1233,9 +1297,12 @@ static void init_palette(void)
 	}
 	ReleaseDC(hwnd, hdc);
     }
-    for (i = 0; i < NALLCOLOURS; i++)
-        internal_set_colour(i, defpal[i].rgbtRed,
-                            defpal[i].rgbtGreen, defpal[i].rgbtBlue);
+    if(pal) {
+	for (i = 0; i < NALLCOLOURS; i++)
+	    colours[i] = PALETTERGB(GetRValue(colours[i]),
+				    GetGValue(colours[i]),
+				    GetBValue(colours[i]));
+    }
 }
 
 /*
@@ -2601,99 +2668,121 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 	ignore_clip = FALSE;
 	return 0;
       case WM_PAINT:
+	/*
+	    We need access to the entire window area because we may have
+	    outstanding changes to update outside the paint area and
+	    unlike a normal dumb windows program we only redraw things
+	    if we actually need to. My original solution was to just use
+	    the WM_PAINT message to invalidate the correct area of the
+	    display array and actually repaint later. That way we could
+	    choose to service the WM_NETEVENT first and only do the redraw
+	    if that keeps us locked up for too long. With the appearance
+	    of the 'toplevel callback' routines this no longer happens.
+	    In addition, it would appear the users prefer an immediate
+	    redraw when another window damages our display.
+
+	    As Microsoft documents a BeginPaint/EndPaint pair is supposed
+	    to create a clip region on the provided 'hDC'. This is so
+	    that flicker is reduced and performance increased when you
+	    do a plain 'redraw everything' in response to the WM_PAINT
+	    message. As described above this doesn't match the fact that
+	    we do a similar process to optimise what is sent by the host.
+
+	    But in addition to the above it appears that drivers and
+	    perhaps Windows itself are significantly buggy and even though
+	    the invalidated RECT may be correct the clip region created by
+	    BeginPaint often ends up wrong.  For example Jordan Russell's
+	    report for NT/2K and my Nvidia driver bug on Windows 2003.
+
+	    So the above BeginPain/EndPaint is used to collect the
+	    invalidated area that windows wants us to fix and tell windows
+	    that we have it in hand (call ValidateRect) we then get a
+	    clean hDC and use that for drawing.
+
+	    Still, this is a rather CPU intensive task, the conversion
+	    of the text array into a bitmap can take a very long
+	    time. Especially if it involves very large proportional
+	    fonts. It's often even worse on Windows7 as the fonts are
+	    larger (more complete) and the display system will end up
+	    loading many of the largest fonts if you use rare characters.
+	    Microsoft now suggests that you do a manual 'save unders' by
+	    drawing the text to a bitmap (the same depth as the screen)
+	    and do a simple blit within WM_PAINT. The problem with this is
+	    that we are very much a text based program and we really want
+	    to support screen readers and have a nice fast "experience"
+	    running under "remote desktop".
+
+	    The unix, GTK, port of PuTTY does something similar as
+	    save-unders is often turned off under X.
+
+	    -- RDB
+	*/
 	{
-	    PAINTSTRUCT p;
+
+	    HDC hdc;
+	    PAINTSTRUCT p, p2;
 
 	    HideCaret(hwnd);
-	    hdc = BeginPaint(hwnd, &p);
-	    if (pal) {
-		SelectPalette(hdc, pal, TRUE);
-		RealizePalette(hdc);
-	    }
+	    hdc = BeginPaint(hwnd, &p2);
+	    /* This copy is not required now, but Windows has me feeling a
+	     * bit paranoid */
+	    p = p2;
+	    EndPaint(hwnd, &p2);
 
-	    /*
-	     * We have to be careful about term_paint(). It will
-	     * set a bunch of character cells to INVALID and then
-	     * call do_paint(), which will redraw those cells and
-	     * _then mark them as done_. This may not be accurate:
-	     * when painting in WM_PAINT context we are restricted
-	     * to the rectangle which has just been exposed - so if
-	     * that only covers _part_ of a character cell and the
-	     * rest of it was already visible, that remainder will
-	     * not be redrawn at all. Accordingly, we must not
-	     * paint any character cell in a WM_PAINT context which
-	     * already has a pending update due to terminal output.
-	     * The simplest solution to this - and many, many
-	     * thanks to Hung-Te Lin for working all this out - is
-	     * not to do any actual painting at _all_ if there's a
-	     * pending terminal update: just mark the relevant
-	     * character cells as INVALID and wait for the
-	     * scheduled full update to sort it out.
-	     * 
-	     * I have a suspicion this isn't the _right_ solution.
-	     * An alternative approach would be to have terminal.c
-	     * separately track what _should_ be on the terminal
-	     * screen and what _is_ on the terminal screen, and
-	     * have two completely different types of redraw (one
-	     * for full updates, which syncs the former with the
-	     * terminal itself, and one for WM_PAINT which syncs
-	     * the latter with the former); yet another possibility
-	     * would be to have the Windows front end do what the
-	     * GTK one already does, and maintain a bitmap of the
-	     * current terminal appearance so that WM_PAINT becomes
-	     * completely trivial. However, this should do for now.
-	     */
-	    term_paint(term, hdc, 
+	    hdc = GetDC(hwnd);
+	    if (hdc) {
+		if (pal) {
+		    SelectPalette(hdc, pal, FALSE);
+		    RealizePalette(hdc);
+		}
+
+		/* If the border was damaged redraw it now */
+		if( /* p.fErase && The system erases to wndclass, not what we want */
+		   (p.rcPaint.left  < offset_width  ||
+		    p.rcPaint.top   < offset_height ||
+		    p.rcPaint.right >= offset_width + font_width*term->cols ||
+		    p.rcPaint.bottom>= offset_height + font_height*term->rows))
+		{
+		    HBRUSH fillcolour, oldbrush;
+		    HPEN   edge, oldpen;
+		    fillcolour = CreateSolidBrush (
+					colours[ATTR_DEFBG>>ATTR_BGSHIFT]);
+		    oldbrush = SelectObject(hdc, fillcolour);
+		    edge = CreatePen(PS_SOLID, 0,
+					colours[ATTR_DEFBG>>ATTR_BGSHIFT]);
+		    oldpen = SelectObject(hdc, edge);
+
+		    IntersectClipRect(hdc,
+			    p.rcPaint.left, p.rcPaint.top,
+			    p.rcPaint.right, p.rcPaint.bottom);
+
+		    ExcludeClipRect(hdc,
+			    offset_width, offset_height,
+			    offset_width+font_width*term->cols,
+			    offset_height+font_height*term->rows);
+
+		    Rectangle(hdc, p.rcPaint.left, p.rcPaint.top,
+			      p.rcPaint.right, p.rcPaint.bottom);
+
+		    SelectClipRgn(hdc, NULL);
+
+		    SelectObject(hdc, oldbrush);
+		    DeleteObject(fillcolour);
+		    SelectObject(hdc, oldpen);
+		    DeleteObject(edge);
+		}
+
+		/* Do redraw of the characters */
+		term_paint(term, hdc,
 		       (p.rcPaint.left-offset_width)/font_width,
 		       (p.rcPaint.top-offset_height)/font_height,
 		       (p.rcPaint.right-offset_width-1)/font_width,
 		       (p.rcPaint.bottom-offset_height-1)/font_height,
-		       !term->window_update_pending);
+		       TRUE);
 
-	    if (p.fErase ||
-	        p.rcPaint.left  < offset_width  ||
-		p.rcPaint.top   < offset_height ||
-		p.rcPaint.right >= offset_width + font_width*term->cols ||
-		p.rcPaint.bottom>= offset_height + font_height*term->rows)
-	    {
-		HBRUSH fillcolour, oldbrush;
-		HPEN   edge, oldpen;
-		fillcolour = CreateSolidBrush (
-				    colours[ATTR_DEFBG>>ATTR_BGSHIFT]);
-		oldbrush = SelectObject(hdc, fillcolour);
-		edge = CreatePen(PS_SOLID, 0, 
-				    colours[ATTR_DEFBG>>ATTR_BGSHIFT]);
-		oldpen = SelectObject(hdc, edge);
-
-		/*
-		 * Jordan Russell reports that this apparently
-		 * ineffectual IntersectClipRect() call masks a
-		 * Windows NT/2K bug causing strange display
-		 * problems when the PuTTY window is taller than
-		 * the primary monitor. It seems harmless enough...
-		 */
-		IntersectClipRect(hdc,
-			p.rcPaint.left, p.rcPaint.top,
-			p.rcPaint.right, p.rcPaint.bottom);
-
-		ExcludeClipRect(hdc, 
-			offset_width, offset_height,
-			offset_width+font_width*term->cols,
-			offset_height+font_height*term->rows);
-
-		Rectangle(hdc, p.rcPaint.left, p.rcPaint.top, 
-			  p.rcPaint.right, p.rcPaint.bottom);
-
-		/* SelectClipRgn(hdc, NULL); */
-
-		SelectObject(hdc, oldbrush);
-		DeleteObject(fillcolour);
-		SelectObject(hdc, oldpen);
-		DeleteObject(edge);
+		ReleaseDC(hwnd, hdc);
 	    }
-	    SelectObject(hdc, GetStockObject(SYSTEM_FONT));
-	    SelectObject(hdc, GetStockObject(WHITE_PEN));
-	    EndPaint(hwnd, &p);
+
 	    ShowCaret(hwnd);
 	}
 	return 0;
@@ -3017,8 +3106,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 	if ((HWND) wParam != hwnd && pal != NULL) {
 	    HDC hdc = get_ctx(NULL);
 	    if (hdc) {
-		if (RealizePalette(hdc) > 0)
-		    UpdateColors(hdc);
+		RealizePalette(hdc);
+		/* The palette may have changed, redraw! */
+		InvalidateRect(hwnd, NULL, TRUE);
 		free_ctx(hdc);
 	    }
 	}
@@ -3027,13 +3117,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 	if (pal != NULL) {
 	    HDC hdc = get_ctx(NULL);
 	    if (hdc) {
-		if (RealizePalette(hdc) > 0)
-		    UpdateColors(hdc);
+		RealizePalette(hdc);
+		/* The palette may have changed, redraw! */
+		InvalidateRect(hwnd, NULL, TRUE);
 		free_ctx(hdc);
 		return TRUE;
 	    }
 	}
 	return FALSE;
+      case WM_DISPLAYCHANGE:
+	if (!pal) {
+	    reinit_palette();
+	}
+        break;
       case WM_KEYDOWN:
       case WM_SYSKEYDOWN:
       case WM_KEYUP:
@@ -4934,10 +5030,7 @@ static void real_palette_set(int n, int r, int g, int b)
 {
     internal_set_colour(n, r, g, b);
     if (pal) {
-	logpal->palPalEntry[n].peRed = r;
-	logpal->palPalEntry[n].peGreen = g;
-	logpal->palPalEntry[n].peBlue = b;
-	logpal->palPalEntry[n].peFlags = PC_NOCOLLAPSE;
+	set_logpal_entry(n, r, g, b);
 	SetPaletteEntries(pal, 0, NALLCOLOURS, logpal->palPalEntry);
     }
 }
@@ -4964,13 +5057,12 @@ void palette_set(void *frontend, int n, int r, int g, int b)
 	UnrealizeObject(pal);
 	RealizePalette(hdc);
 	free_ctx(hdc);
-    } else {
-	if (n == (ATTR_DEFBG>>ATTR_BGSHIFT))
-	    /* If Default Background changes, we need to ensure any
-	     * space between the text area and the window border is
-	     * redrawn. */
-	    InvalidateRect(hwnd, NULL, TRUE);
     }
+    if (n == (ATTR_DEFBG>>ATTR_BGSHIFT))
+	/* If Default Background changes, we need to ensure any
+	 * space between the text area and the window border is
+	 * redrawn. */
+	InvalidateRect(hwnd, NULL, TRUE);
 }
 
 void palette_reset(void *frontend)
@@ -4982,10 +5074,7 @@ void palette_reset(void *frontend)
         internal_set_colour(i, defpal[i].rgbtRed,
                             defpal[i].rgbtGreen, defpal[i].rgbtBlue);
 	if (pal) {
-	    logpal->palPalEntry[i].peRed = defpal[i].rgbtRed;
-	    logpal->palPalEntry[i].peGreen = defpal[i].rgbtGreen;
-	    logpal->palPalEntry[i].peBlue = defpal[i].rgbtBlue;
-	    logpal->palPalEntry[i].peFlags = 0;
+	    set_logpal_entry(i, defpal[i].rgbtRed, defpal[i].rgbtGreen, defpal[i].rgbtBlue);
 	}
     }
 
