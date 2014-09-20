@@ -1267,6 +1267,47 @@ static void systopalette(void)
     }
 }
 
+/* The palette is really in the wrong order; Windows implicitly assumes
+ * the start of the palette is the most important, but the default colours
+ * are at the end ... let's reorder them, That way if we happen to be
+ * on a (now ancient) 256 colour display we'll get the default colours
+ * (6) the ansi colours (16) and the 6x6x6 colour cube (216) and finally
+ * the greyscale ramp (24).
+ *
+ * There are 236 entries available, so this is too many, I have to
+ * 'collapse' black and white into the system entries to get just the
+ * cube and leave the greyscale ramp off the end.
+ *
+ * Keeping the greyscale would also be possible, but compacting the cube
+ * is more difficult, the ramp OTOH is served by the greys already in
+ * the cube.
+ *
+ * If the ansi colours are mapped to the same as the system colours this
+ * will free up enough entries to get the full greyscale ramp. (There are
+ * several other overlaps)
+ */
+static void set_logpal_entry(int i, int r, int g, int b)
+{
+    i = (i+6) % NALLCOLOURS;
+    logpal->palPalEntry[i].peRed = r;
+    logpal->palPalEntry[i].peGreen = g;
+    logpal->palPalEntry[i].peBlue = b;
+    logpal->palPalEntry[i].peFlags = PC_NOCOLLAPSE;
+
+    if ((r == 0 || r == 255) &&
+	(g == 0 || g == 255) &&
+	(b == 0 || b == 255) )
+	logpal->palPalEntry[i].peFlags = 0;
+
+    if ((r == 0 || r == 128) &&
+	(g == 0 || g == 128) &&
+	(b == 0 || b == 128) )
+	logpal->palPalEntry[i].peFlags = 0;
+
+    if (r == 192 && g == 192 && b == 192)
+	logpal->palPalEntry[i].peFlags = 0;
+}
+
 /*
  * Set up the colour palette.
  */
@@ -1287,10 +1328,7 @@ static void init_palette(void)
 	    logpal->palVersion = 0x300;
 	    logpal->palNumEntries = NALLCOLOURS;
 	    for (i = 0; i < NALLCOLOURS; i++) {
-		logpal->palPalEntry[i].peRed = defpal[i].rgbtRed;
-		logpal->palPalEntry[i].peGreen = defpal[i].rgbtGreen;
-		logpal->palPalEntry[i].peBlue = defpal[i].rgbtBlue;
-		logpal->palPalEntry[i].peFlags = PC_NOCOLLAPSE;
+		set_logpal_entry(i, defpal[i].rgbtRed, defpal[i].rgbtGreen, defpal[i].rgbtBlue);
 	    }
 	    pal = CreatePalette(logpal);
 	    if (pal) {
@@ -2670,7 +2708,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 	    HideCaret(hwnd);
 	    hdc = BeginPaint(hwnd, &p);
 	    if (pal) {
-		SelectPalette(hdc, pal, TRUE);
+		SelectPalette(hdc, pal, FALSE);
 		RealizePalette(hdc);
 	    }
 
@@ -3080,8 +3118,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 	if ((HWND) wParam != hwnd && pal != NULL) {
 	    HDC hdc = get_ctx(NULL);
 	    if (hdc) {
-		if (RealizePalette(hdc) > 0)
-		    UpdateColors(hdc);
+		RealizePalette(hdc);
+		/* The palette may have changed, redraw! */
+		InvalidateRect(hwnd, NULL, TRUE);
 		free_ctx(hdc);
 	    }
 	}
@@ -3090,8 +3129,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 	if (pal != NULL) {
 	    HDC hdc = get_ctx(NULL);
 	    if (hdc) {
-		if (RealizePalette(hdc) > 0)
-		    UpdateColors(hdc);
+		RealizePalette(hdc);
+		/* The palette may have changed, redraw! */
+		InvalidateRect(hwnd, NULL, TRUE);
 		free_ctx(hdc);
 		return TRUE;
 	    }
@@ -4921,10 +4961,7 @@ void free_ctx(Context ctx)
 static void real_palette_set(int n, int r, int g, int b)
 {
     if (pal) {
-	logpal->palPalEntry[n].peRed = r;
-	logpal->palPalEntry[n].peGreen = g;
-	logpal->palPalEntry[n].peBlue = b;
-	logpal->palPalEntry[n].peFlags = PC_NOCOLLAPSE;
+	set_logpal_entry(n, r, g, b);
 	colours[n] = PALETTERGB(r, g, b);
 	SetPaletteEntries(pal, 0, NALLCOLOURS, logpal->palPalEntry);
     } else
@@ -4943,13 +4980,12 @@ void palette_set(void *frontend, int n, int r, int g, int b)
 	UnrealizeObject(pal);
 	RealizePalette(hdc);
 	free_ctx(hdc);
-    } else {
-	if (n == (ATTR_DEFBG>>ATTR_BGSHIFT))
-	    /* If Default Background changes, we need to ensure any
-	     * space between the text area and the window border is
-	     * redrawn. */
-	    InvalidateRect(hwnd, NULL, TRUE);
     }
+    if (n == (ATTR_DEFBG>>ATTR_BGSHIFT))
+	/* If Default Background changes, we need to ensure any
+	 * space between the text area and the window border is
+	 * redrawn. */
+	InvalidateRect(hwnd, NULL, TRUE);
 }
 
 void palette_reset(void *frontend)
@@ -4959,10 +4995,7 @@ void palette_reset(void *frontend)
     /* And this */
     for (i = 0; i < NALLCOLOURS; i++) {
 	if (pal) {
-	    logpal->palPalEntry[i].peRed = defpal[i].rgbtRed;
-	    logpal->palPalEntry[i].peGreen = defpal[i].rgbtGreen;
-	    logpal->palPalEntry[i].peBlue = defpal[i].rgbtBlue;
-	    logpal->palPalEntry[i].peFlags = 0;
+	    set_logpal_entry(i, defpal[i].rgbtRed, defpal[i].rgbtGreen, defpal[i].rgbtBlue);
 	    colours[i] = PALETTERGB(defpal[i].rgbtRed,
 				    defpal[i].rgbtGreen,
 				    defpal[i].rgbtBlue);
