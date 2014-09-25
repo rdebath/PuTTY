@@ -1313,7 +1313,7 @@ static void set_logpal_entry(int i, int r, int g, int b)
  */
 static void init_palette(void)
 {
-    int i;
+    int i, r=42;
     HDC hdc = GetDC(hwnd);
     if (hdc) {
 	if (conf_get_int(conf, CONF_try_palette) &&
@@ -1329,6 +1329,20 @@ static void init_palette(void)
 	    logpal->palNumEntries = NALLCOLOURS;
 	    for (i = 0; i < NALLCOLOURS; i++) {
 		set_logpal_entry(i, defpal[i].rgbtRed, defpal[i].rgbtGreen, defpal[i].rgbtBlue);
+	    }
+	    /* Scramble the order of the 6x6x6 cube, this means that if
+	     * Windows only lets us have some of the colours we should
+	     * get a good selection */
+	    for (i = 22; i < 22+216; i++) {
+		int j;
+		for(j=i+1; j< 22+216; j++) {
+		    PALETTEENTRY tmp;
+		    r *= 75; r += j; r += r / 65537;
+		    if (r&0x100) continue;
+		    tmp = logpal->palPalEntry[i];
+		    logpal->palPalEntry[i] = logpal->palPalEntry[j];
+		    logpal->palPalEntry[j] = tmp;
+		}
 	    }
 	    pal = CreatePalette(logpal);
 	    if (pal) {
