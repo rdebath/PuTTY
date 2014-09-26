@@ -4403,8 +4403,17 @@ static int TranslateKey(UINT message, WPARAM wParam, LPARAM lParam,
 	    return p - output;
 	}
 	if (wParam == VK_SPACE && shift_state == 3) {	/* Ctrl-Shift-Space */
-	    *p++ = 160;
-	    return p - output;
+	    WCHAR keybuf;
+	    /* This 160 is actually a no-break space or U+00A0, so we have to
+	     * translate it which means we send it to the ldisc directly.
+	     * Not sure it makes sense to do C-A-S-Space though. */
+	    if (ldisc) {
+		if (p != output)
+			ldisc_send(ldisc, output, p-output, 1);
+		keybuf = 160;
+		luni_send(ldisc, &keybuf, 1, 1);
+	    }
+	    return 0;
 	}
 	if (wParam == VK_CANCEL && shift_state == 2) {	/* Ctrl-Break */
 	    if (back)
