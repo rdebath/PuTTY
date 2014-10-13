@@ -10,6 +10,7 @@
 #define SECURITY_WIN32
 #endif
 #include <security.h>
+#include <ctype.h>
 
 DWORD osMajorVersion, osMinorVersion, osPlatformId;
 
@@ -310,6 +311,37 @@ const char *win_strerror(int error)
 
     return es->text;
 }
+
+#ifndef __MINGW32__
+
+/* This function is in the public domain. */
+int strcasecmp( char const* s1, char const* s2)
+{
+    for (;;) {
+        int c1 = tolower( *((unsigned char*) s1++));
+        int c2 = tolower( *((unsigned char*) s2++));
+
+        if ((c1 != c2) || (c1 == '\0')) {
+            return( c1 - c2);
+        }
+    }
+}
+
+/* This function is in the public domain. */
+int strncasecmp( char const* s1, char const* s2, size_t n)
+{
+    for (; n != 0; --n) {
+        int c1 = tolower( *((unsigned char*) s1++));
+        int c2 = tolower( *((unsigned char*) s2++));
+
+        if ((c1 != c2) || (c1 == '\0')) {
+            return( c1 - c2);
+        }
+    }
+
+    return( 0);
+}
+#endif
 
 #ifdef DEBUG
 static FILE *debug_fp = NULL;
