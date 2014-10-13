@@ -537,6 +537,10 @@ GLOBAL int restricted_acl;
 typedef PVOID DLL_DIRECTORY_COOKIE;
 DECLSPEC_IMPORT DLL_DIRECTORY_COOKIE WINAPI AddDllDirectory (PCWSTR NewDirectory);
 #endif
+#ifndef __MINGW32__
+int strcasecmp(char const* s1, char const* s2);
+int strncasecmp(char const* s1, char const* s2, size_t n);
+#endif
 
 /*
  * Exports from sizetip.c.

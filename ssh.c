@@ -175,15 +175,15 @@ static unsigned int ssh_tty_parse_specchar(char *s)
 }
 static unsigned int ssh_tty_parse_boolean(char *s)
 {
-    if (stricmp(s, "yes") == 0 ||
-	stricmp(s, "on") == 0 ||
-	stricmp(s, "true") == 0 ||
-	stricmp(s, "+") == 0)
+    if (strcasecmp(s, "yes") == 0 ||
+	strcasecmp(s, "on") == 0 ||
+	strcasecmp(s, "true") == 0 ||
+	strcasecmp(s, "+") == 0)
 	return 1; /* true */
-    else if (stricmp(s, "no") == 0 ||
-	     stricmp(s, "off") == 0 ||
-	     stricmp(s, "false") == 0 ||
-	     stricmp(s, "-") == 0)
+    else if (strcasecmp(s, "no") == 0 ||
+	     strcasecmp(s, "off") == 0 ||
+	     strcasecmp(s, "false") == 0 ||
+	     strcasecmp(s, "-") == 0)
 	return 0; /* false */
     else
 	return (atoi(s) != 0);
