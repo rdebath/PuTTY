@@ -4633,11 +4633,6 @@ static void term_out(Terminal *term)
 			    term->compatibility_level &= ~TM_VTXXX;
 			    term->compatibility_level |= TM_VT102;
 			    break;
-			  case 62:
-			    term->compatibility_level &= ~TM_VTXXX;
-			    term->compatibility_level |= TM_VT220;
-			    break;
-
 			  default:
 			    if (term->esc_args[0] > 60 &&
 				term->esc_args[0] < 70)
