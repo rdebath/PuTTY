@@ -348,6 +348,12 @@ static void close_session(void *ignored_context)
     }
 }
 
+static void rescue_callback(void *ctx, unsigned long now)
+{
+    run_toplevel_callbacks();
+    schedule_timer(20, &rescue_callback, &rescue_callback);
+}
+
 int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 {
     MSG msg;
@@ -920,8 +926,13 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 	    if (msg.message == WM_QUIT)
 		goto finished;	       /* two-level break */
 
-	    if (!(IsWindow(logbox) && IsDialogMessage(logbox, &msg)))
+	    if (!(IsWindow(logbox) && IsDialogMessage(logbox, &msg))) {
+		if (toplevel_callback_pending())
+		    schedule_timer(20, &rescue_callback, &rescue_callback);
+
 		DispatchMessageW(&msg);
+		expire_timer_context(&rescue_callback);
+	    }
 
             /*
              * WM_NETEVENT messages seem to jump ahead of others in
@@ -941,6 +952,16 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
              * run_toplevel_callbacks (which is where the netevents
              * are actually processed, causing fresh NETEVENT messages
              * to appear) until we've done this.
+	     *
+	     *---------------
+	     * No event jumps the queue. The WM_PAINT and WM_TIMER messages
+	     * are not placed in the queue. Only if a PeekMessage is done
+	     * on an empty queue are the static structures for these two
+	     * forms of message checked. If an event is pending a message
+	     * is then generated on the fly. This means that finding a
+	     * single message is, in theory not sufficient, however, the
+	     * processing of WM_NETEVENT messages is likely sufficiently
+	     * fast that it will, in fact, be okay. -- RdB
              */
             if (msg.message != WM_NETEVENT)
                 break;
