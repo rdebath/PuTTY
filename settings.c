@@ -640,6 +640,7 @@ void save_open_settings(void *sesskey, Conf *conf)
     write_setting_s(sesskey, "LineCodePage", conf_get_str(conf, CONF_line_codepage));
     write_setting_i(sesskey, "CJKAmbigWide", conf_get_int(conf, CONF_cjk_ambig_wide));
     write_setting_i(sesskey, "UTF8Override", conf_get_int(conf, CONF_utf8_override));
+    write_setting_i(sesskey, "UTF8InitMode", conf_get_int(conf, CONF_utf8_initmode));
     write_setting_s(sesskey, "Printer", conf_get_str(conf, CONF_printer));
     write_setting_i(sesskey, "CapsLockCyr", conf_get_int(conf, CONF_xlat_capslockcyr));
     write_setting_i(sesskey, "ScrollBar", conf_get_int(conf, CONF_scrollbar));
@@ -1065,6 +1066,7 @@ void load_open_settings(void *sesskey, Conf *conf)
     gpps(sesskey, "LineCodePage", "", conf, CONF_line_codepage);
     gppi(sesskey, "CJKAmbigWide", 0, conf, CONF_cjk_ambig_wide);
     gppi(sesskey, "UTF8Override", 1, conf, CONF_utf8_override);
+    gppi(sesskey, "UTF8InitMode", 0, conf, CONF_utf8_initmode);
     gpps(sesskey, "Printer", "", conf, CONF_printer);
     gppi(sesskey, "CapsLockCyr", 0, conf, CONF_xlat_capslockcyr);
     gppi(sesskey, "ScrollBar", 1, conf, CONF_scrollbar);

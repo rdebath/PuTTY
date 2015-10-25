@@ -6,6 +6,7 @@
 #include <wchar.h>
 
 #include <time.h>
+#include <langinfo.h>
 
 #include "putty.h"
 #include "charset.h"
@@ -112,26 +113,25 @@ int init_ucs(struct unicode_data *ucsdata, char *linecharset,
 
     /*
      * If utf8_override is set and the POSIX locale settings
-     * dictate a UTF-8 character set, then just go straight for
+     * dictate a UTF-8 character set, then force defaults to
      * UTF-8.
      */
-    ucsdata->line_codepage = CS_NONE;
+    ucsdata->utf8_locale = 0;
     if (utf8_override) {
-	const char *s;
-	if (((s = getenv("LC_ALL"))   && *s) ||
-	    ((s = getenv("LC_CTYPE")) && *s) ||
-	    ((s = getenv("LANG"))     && *s)) {
-	    if (strstr(s, "UTF-8"))
-		ucsdata->line_codepage = CS_UTF8;
-	}
+	/* Need to set the locale here because guessing it from the
+	 * envionment is nasty; see:
+	 * http://www.cl.cam.ac.uk/~mgk25/ucs/langinfo.c
+	 */
+	setlocale(LC_CTYPE, "");
+	if (!strcmp("UTF-8", nl_langinfo(CODESET)))
+	    ucsdata->utf8_locale = 1;
     }
 
     /*
-     * Failing that, line_codepage should be decoded from the
-     * specification in conf.
+     * The line_codepage 8bit codepage should be decoded from the
+     * specification in conf. (This may also be UTF-8)
      */
-    if (ucsdata->line_codepage == CS_NONE)
-	ucsdata->line_codepage = decode_codepage(linecharset);
+    ucsdata->line_codepage = decode_codepage(linecharset);
 
     /*
      * If line_codepage is _still_ CS_NONE, we assume we're using
@@ -164,6 +164,8 @@ int init_ucs(struct unicode_data *ucsdata, char *linecharset,
 					 ucsdata->line_codepage,
 					 NULL, L"", 0))
 	    ucsdata->unitab_line[i] = wc[0];
+	else if (ucsdata->line_codepage == CS_UTF8)
+	    ucsdata->unitab_line[i] = i; /* Use ISO-8859-1 */
 	else
 	    ucsdata->unitab_line[i] = 0xFFFD;
     }

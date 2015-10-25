@@ -1347,9 +1347,12 @@ static void power_on(Terminal *term, int clear)
         term->save_wnext = term->alt_save_wnext = FALSE;
     term->alt_wrap = term->wrap = conf_get_int(term->conf, CONF_wrap_mode);
     term->alt_cset = term->cset = term->save_cset = term->alt_save_cset = 0;
-    term->alt_utf = term->utf = term->save_utf = term->alt_save_utf = 0;
-    term->utf_state = 0;
+    term->utf = conf_get_int(term->conf, CONF_utf8_initmode);
+    if (!term->utf && conf_get_int(term->conf, CONF_utf8_override))
+	term->utf = term->ucsdata->utf8_locale;
     term->width_override = 0;
+
+    term->lookaheadbuf_cnt = 0;
     term->alt_sco_acs = term->sco_acs =
         term->save_sco_acs = term->alt_save_sco_acs = 0;
     term->cset_attr[0] = term->cset_attr[1] =
@@ -1381,23 +1384,32 @@ static void power_on(Terminal *term, int clear)
 	for (i = 0; i < 256; i++)
 	    term->wordness[i] = conf_get_int_int(term->conf, CONF_wordness, i);
     }
-    if (term->screen) {
-	swap_screen(term, 1, FALSE, FALSE);
-	erase_lots(term, FALSE, TRUE, TRUE);
-	swap_screen(term, 0, FALSE, FALSE);
-	if (clear)
+    if (clear || term->curs.x<0 || term->curs.y<0 ||
+	term->curs.x >= term->cols || term->curs.y >= term->rows ) {
+	if (term->screen) {
+	    swap_screen(term, 1, FALSE, FALSE);
 	    erase_lots(term, FALSE, TRUE, TRUE);
-	term->curs.y = find_last_nonempty_line(term, term->screen) + 1;
-	if (term->curs.y == term->rows) {
-	    term->curs.y--;
-	    scroll(term, 0, term->rows - 1, 1, TRUE);
+	    swap_screen(term, 0, FALSE, FALSE);
+	    if (clear)
+		erase_lots(term, FALSE, TRUE, TRUE);
+	    term->curs.y = find_last_nonempty_line(term, term->screen) + 1;
+	    if (term->curs.y == term->rows) {
+		term->curs.y--;
+		scroll(term, 0, term->rows - 1, 1, TRUE);
+	    }
+	} else {
+	    term->curs.y = 0;
 	}
-    } else {
-	term->curs.y = 0;
+	term->curs.x = 0;
     }
-    term->curs.x = 0;
     term_schedule_tblink(term);
     term_schedule_cblink(term);
+
+    if (term->reset_132) {
+	if (!term->no_remote_resize)
+	    request_resize(term->frontend, 80, term->rows);
+	term->reset_132 = 0;
+    }
 }
 
 /*
@@ -1651,11 +1663,11 @@ void term_reconfig(Terminal *term, Conf *conf)
 	term->xterm_mouse = 0;
 	set_raw_mouse_mode(term->frontend, 0);
     }
-    if (conf_get_int(term->conf, CONF_no_remote_charset)) {
-	term->cset_attr[0] = term->cset_attr[1] = LCHAR_ASCII;
-	term->sco_acs = term->alt_sco_acs = 0;
-	term->utf = 0;
-    }
+    term->cset_attr[0] = term->cset_attr[1] = LCHAR_ASCII;
+    term->sco_acs = term->alt_sco_acs = 0;
+    term->utf = conf_get_int(term->conf, CONF_utf8_initmode);
+    if (!term->utf && conf_get_int(term->conf, CONF_utf8_override))
+	term->utf = term->ucsdata->utf8_locale;
     if (!conf_get_str(term->conf, CONF_printer)) {
 	term_print_finish(term);
     }
@@ -2119,9 +2131,6 @@ static void swap_screen(Terminal *term, int which, int reset, int keep_cur_pos)
 	t = term->cset;
 	if (!reset) term->cset = term->alt_cset;
 	term->alt_cset = t;
-	t = term->utf;
-	if (!reset) term->utf = term->alt_utf;
-	term->alt_utf = t;
 	t = term->sco_acs;
 	if (!reset) term->sco_acs = term->alt_sco_acs;
 	term->alt_sco_acs = t;
@@ -2142,10 +2151,6 @@ static void swap_screen(Terminal *term, int which, int reset, int keep_cur_pos)
         if (!reset && !keep_cur_pos)
             term->save_attr = term->alt_save_attr;
         term->alt_save_attr = t;
-        t = term->save_utf;
-        if (!reset && !keep_cur_pos)
-            term->save_utf = term->alt_save_utf;
-        term->alt_save_utf = t;
         t = term->save_wnext;
         if (!reset && !keep_cur_pos)
             term->save_wnext = term->alt_save_wnext;
@@ -2448,7 +2453,6 @@ static void save_cursor(Terminal *term, int save)
 	term->save_fg_colour = term->fg_colour;
 	term->save_bg_colour = term->bg_colour;
 	term->save_cset = term->cset;
-	term->save_utf = term->utf;
 	term->save_wnext = term->wrapnext;
 	term->save_csattr = term->cset_attr[term->cset];
 	term->save_sco_acs = term->sco_acs;
@@ -2464,7 +2468,6 @@ static void save_cursor(Terminal *term, int save)
 	term->fg_colour = term->save_fg_colour;
 	term->bg_colour = term->save_bg_colour;
 	term->cset = term->save_cset;
-	term->utf = term->save_utf;
 	term->wrapnext = term->save_wnext;
 	/*
 	 * wrapnext might reset to False if the x position is no
@@ -3113,15 +3116,30 @@ static void term_out_litchar(Terminal *term, unsigned long c)
 static void term_out(Terminal *term)
 {
     unsigned long c;
-    int unget;
+    int chars_eaten = 0;
     unsigned char localbuf[256], *chars;
     int nchars = 0;
 
-    unget = -1;
+    /* Below is used to unambigiously flag characters as unicode */
+    const unsigned long UNICODE_FLAG = 0x40000000UL;
 
-    chars = NULL;		       /* placate compiler warnings */
-    while (nchars > 0 || unget != -1 || bufchain_size(&term->inbuf) > 0) {
-	if (unget == -1) {
+    chars = NULL;                      /* placate compiler warnings */
+    while (chars_eaten > 0 || nchars > 0 || bufchain_size(&term->inbuf) > 0) {
+	/* Been munched */
+	if (chars_eaten > 0) {
+	    int i=0;
+	    while(i+chars_eaten < term->lookaheadbuf_cnt) {
+		term->lookaheadbuf[i] = term->lookaheadbuf[i+chars_eaten], i++;
+	    }
+	    while(i<term->lookaheadbuf_cnt)
+		term->lookaheadbuf[i++] = 0;
+	    term->lookaheadbuf_cnt -= chars_eaten;
+	}
+	/* Paranoid about hungry hippos */
+	if (term->lookaheadbuf_cnt < 0) term->lookaheadbuf_cnt = 0;
+	/* More food */
+	if ( (chars_eaten == 0 || term->lookaheadbuf_cnt == 0) &&
+		(nchars > 0 || bufchain_size(&term->inbuf) > 0)) {
 	    if (nchars == 0) {
 		void *ret;
 		bufchain_prefix(&term->inbuf, &ret, &nchars);
@@ -3141,128 +3159,168 @@ static void term_out(Terminal *term)
 	     */
 	    if (term->logtype == LGTYP_DEBUG && term->logctx)
 		logtraffic(term->logctx, (unsigned char) c, LGTYP_DEBUG);
-	} else {
-	    c = unget;
-	    unget = -1;
-	}
 
-	/* Note only VT220+ are 8-bit VT102 is seven bit, it shouldn't even
-	 * be able to display 8-bit characters, but I'll let that go 'cause
-	 * of i18n.
-	 */
+	    /* Place in mouth */
+	    if (c)
+		term->lookaheadbuf[term->lookaheadbuf_cnt++] = (unsigned char)c;
+	    else {
+		chars_eaten = 0;
+		continue;
+	    }
+	}
+	/* Going hungry */
+	if (term->lookaheadbuf_cnt <= 0) break;
+	/* Nibble politely */
+	c = term->lookaheadbuf[0];
+	chars_eaten = 1;
+	/* Don't get sick! */
+	if (term->lookaheadbuf_cnt >= sizeof(term->lookaheadbuf)-2) continue;
+
+	/* More please ...  chars_eaten = 0; continue; */
+	/* Munch munch ...  chars_eaten = ?; continue; */
+
+	/* Push back is more complex; make sure you always arrange for
+	   at least one to eaten even if you have to insert it. */
+
+        /* Note only VT220+ are 8-bit VT102 is seven bit, it shouldn't even
+         * be able to display 8-bit characters, but I'll let that go 'cause
+         * of i18n.
+         */
 
 	/*
 	 * If we're printing, add the character to the printer
 	 * buffer.
 	 */
 	if (term->printing) {
-	    bufchain_add(&term->printer_buf, &c, 1);
-
-	    /*
-	     * If we're in print-only mode, we use a much simpler
-	     * state machine designed only to recognise the ESC[4i
-	     * termination sequence.
-	     */
-	    if (term->only_printing) {
-		if (c == '\033')
-		    term->print_state = 1;
-		else if (c == (unsigned char)'\233')
-		    term->print_state = 2;
-		else if (c == '[' && term->print_state == 1)
-		    term->print_state = 2;
-		else if (c == '4' && term->print_state == 2)
-		    term->print_state = 3;
-		else if (c == 'i' && term->print_state == 3)
-		    term->print_state = 4;
-		else
-		    term->print_state = 0;
-		if (term->print_state == 4) {
+	    if (c == '\033' && term->only_printing) {
+		static unsigned int CSI4i[] = { '\033', '[', '4', 'i' };
+		if( memcmp(term->lookaheadbuf, CSI4i,
+			    min(4, term->lookaheadbuf_cnt)
+			      * sizeof(unsigned int)) == 0) {
+		    if (term->lookaheadbuf_cnt < 4) {
+			chars_eaten = 0;
+			continue;
+		    }
 		    term_print_finish(term);
+		    chars_eaten = 4;
+		    continue;
 		}
-		continue;
 	    }
+	    bufchain_add(&term->printer_buf, &c, 1);
+	    continue;
 	}
 
 	/* First see about all those translations. */
-	if (term->termstate == TOPLEVEL) {
-	    if (in_utf(term))
-		switch (term->utf_state) {
-		  case 0:
-		    if (c < 0x80) {
-			/* UTF-8 must be stateless so we ignore iso2022. */
-			if (term->ucsdata->unitab_ctrl[c] != 0xFF) 
-			     c = term->ucsdata->unitab_ctrl[c];
-			else c = ((unsigned char)c) | CSET_ASCII;
-			break;
-		    } else if ((c & 0xe0) == 0xc0) {
-			term->utf_size = term->utf_state = 1;
-			term->utf_char = (c & 0x1f);
-		    } else if ((c & 0xf0) == 0xe0) {
-			term->utf_size = term->utf_state = 2;
-			term->utf_char = (c & 0x0f);
-		    } else if ((c & 0xf8) == 0xf0) {
-			term->utf_size = term->utf_state = 3;
-			term->utf_char = (c & 0x07);
-		    } else if ((c & 0xfc) == 0xf8) {
-			term->utf_size = term->utf_state = 4;
-			term->utf_char = (c & 0x03);
-		    } else if ((c & 0xfe) == 0xfc) {
-			term->utf_size = term->utf_state = 5;
-			term->utf_char = (c & 0x01);
-		    } else {
-			c = UCSERR;
-			break;
-		    }
-		    continue;
-		  case 1:
-		  case 2:
-		  case 3:
-		  case 4:
-		  case 5:
-		    if ((c & 0xC0) != 0x80) {
-			unget = c;
-			c = UCSERR;
-			term->utf_state = 0;
-			break;
-		    }
-		    term->utf_char = (term->utf_char << 6) | (c & 0x3f);
-		    if (--term->utf_state)
-			continue;
+	if (term->termstate >= VT52_ESC) c |= UNICODE_FLAG;
+	if (in_utf(term) && (c & UNICODE_FLAG) == 0) {
+	    int safely = term->utf != 2;
+	    if (!safely && term->sco_acs)
+		;
+	    else if (c < 0x80) {
+		/* UTF-8 must be stateless so we ignore iso2022. */
+		if (term->ucsdata->unitab_ctrl[c] != 0xFF)
+		    c = term->ucsdata->unitab_ctrl[c] | UNICODE_FLAG;
+		else if (safely && term->termstate == TOPLEVEL)
+		    c = ((unsigned char)c) | CSET_ASCII;
+	    } else if (c < 0xC0 || c >= 0xFE) {
+		if (safely)
+		    c = UCSERR;
+	    } else {
+	static unsigned char UTFlen[] = {
+	    01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01,
+	    01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01, 01,
+	    02, 02, 02, 02, 02, 02, 02, 02, 02, 02, 02, 02, 02, 02, 02, 02,
+	    03, 03, 03, 03, 03, 03, 03, 03, 04, 04, 04, 04, 05, 05, 00, 00
+	};
+		int utf_size = UTFlen[c-0xC0];
+		int nc = term->lookaheadbuf[term->lookaheadbuf_cnt-1];
 
-		    c = term->utf_char;
+		if (term->lookaheadbuf_cnt > 1 &&
+		    term->lookaheadbuf_cnt <= utf_size+1 &&
+		    (nc < 0x80 || nc >= 0xC0)) {
+		    if (safely) {
+			chars_eaten = term->lookaheadbuf_cnt-1;
+			c = UCSERR;
+		    }
+		} else if (utf_size >= term->lookaheadbuf_cnt) {
+		    chars_eaten = 0;
+		    continue;
+		} else {
+		    int i;
+		    /* We have a valid string at this point */
+		    chars_eaten = utf_size + 1;
+		    c = c & (0x3F >> utf_size);
+		    for(i=1; i<=utf_size; i++) {
+			if (term->lookaheadbuf[i] < 0x80 ||
+			    term->lookaheadbuf[i] > 0xBF) {
+			    /* This cannot happen ... yet, but if someone
+			     * else messes with the buffer they may leave
+			     * an illegal sequence for us. */
+			    c = 0xFFFD;
+			    break;
+			}
+			c = (c << 6) + term->lookaheadbuf[i] - 0x80;
+		    }
 
 		    /* Is somebody trying to be evil! */
 		    if (c < 0x80 ||
-			(c < 0x800 && term->utf_size >= 2) ||
-			(c < 0x10000 && term->utf_size >= 3) ||
-			(c < 0x200000 && term->utf_size >= 4) ||
-			(c < 0x4000000 && term->utf_size >= 5))
+			(c < 0x800 && utf_size >= 2) ||
+			(c < 0x10000 && utf_size >= 3) ||
+			(c < 0x200000 && utf_size >= 4) ||
+			(c < 0x4000000 && utf_size >= 5))
 			c = UCSERR;
+
+		    /* The UTF-16 surrogates are not nice either. */
+		    /*       The standard give the option of decoding these:
+		     *       I don't want to!
+		     *	     But I will if we're in evil utf mode. */
+		    if (c >= 0xD800 && c < 0xE000) {
+			if (safely)
+			    c = UCSERR;
+			else {
+			    /* UTF-16 Lead char in nasty mode.  This is decoding
+			     * UTF-16 encoded inside UTF-8. */
+			    if (c >= 0xD800 && c < 0xDC00) {
+				int hi = ((c & 0x3FF) << 10), lo = 0;
+				if (term->lookaheadbuf_cnt >= 6) {
+				    if (((term->lookaheadbuf[3] & 0xf0) == 0xe0) &&
+					((term->lookaheadbuf[4] & 0xc0) == 0x80) &&
+					((term->lookaheadbuf[5] & 0xc0) == 0x80)) {
+
+					lo = ((term->lookaheadbuf[3] & 0xF) <<12) +
+					     ((term->lookaheadbuf[4] & 0x3F) <<6) +
+					      (term->lookaheadbuf[5] & 0x3F);
+				    }
+				    if (lo >= 0xDC00 && lo < 0xE000) {
+					chars_eaten = 6;
+					c = hi + (lo & 0x3FF) + 0x10000;
+				    }
+				} else {
+				    chars_eaten = 0;
+				    continue;
+				}
+			    }
+			}
+		    }
 
 		    /* Unicode line separator and paragraph separator are CR-LF */
 		    if (c == 0x2028 || c == 0x2029)
 			c = 0x85;
 
 		    /* High controls are probably a Baaad idea too. */
-		    if (c < 0xA0)
+		    if (c < 0xA0 && safely)
 			c = 0xFFFD;
-
-		    /* Linux direct to font compatability.
-		     * Maps the VGA rom font (CP437) to U+F000.
-		     * Note: Console tools can change this, but if anything
-		     *       assumes a charmap it has to be this one.
-		     */
-		    if (c >= 0xF000 && c < 0xF100)
-			c = (c & 0xFF) + CSET_SCOACS;
-
-		    /* The UTF-16 surrogates are not nice either. */
-		    /*       The standard give the option of decoding these: 
-		     *       I don't want to! */
-		    if (c >= 0xD800 && c < 0xE000)
-			c = UCSERR;
 
 		    /* ISO 10646 characters now limited to UTF-16 range. */
 		    if (c > 0x10FFFF)
+			c = UCSERR;
+
+		    /* These are "Non characters". */
+		    if (c >= 0xFDD0 && c < 0xFDF0)
+			c = UCSERR;
+
+		    /* As are these */
+		    if ((c&0xFFFF) == 0xFFFE || (c&0xFFFF) == 0xFFFF)
 			c = UCSERR;
 
 		    /* This is currently a TagPhobic application.. */
@@ -3272,51 +3330,87 @@ static void term_out(Terminal *term)
 		    /* U+FEFF is best seen as a null. */
 		    if (c == 0xFEFF)
 			continue;
-		    /* But U+FFFE is an error. */
-		    if (c == 0xFFFE || c == 0xFFFF)
-			c = UCSERR;
 
-		    break;
-	    }
-	    /* Are we in the nasty ACS mode? Note: no sco in utf mode. */
-	    else if(term->sco_acs && 
-		    (c!='\033' && c!='\012' && c!='\015' && c!='\b'))
-	    {
-	       if (term->sco_acs == 2) c |= 0x80;
-	       c |= CSET_SCOACS;
-	    } else {
-		switch (term->cset_attr[term->cset]) {
-		    /* 
-		     * Linedraw characters are different from 'ESC ( B'
-		     * only for a small range. For ones outside that
-		     * range, make sure we use the same font as well as
-		     * the same encoding.
-		     */
-		  case LCHAR_LINEDRW:
-		    if (term->ucsdata->unitab_ctrl[c] != 0xFF)
-			c = term->ucsdata->unitab_ctrl[c];
-		    else
-			c = ((unsigned char) c) | CSET_LINEDRW;
-		    break;
-
-		  case LCHAR_UKASCII:
-		    /* If UK-ASCII, make the '#' a LineDraw Pound */
-		    if (c == '#') {
-			c = '}' | CSET_LINEDRW;
-			break;
-		    }
-		  /*FALLTHROUGH*/ case LCHAR_ASCII:
-		    if (term->ucsdata->unitab_ctrl[c] != 0xFF)
-			c = term->ucsdata->unitab_ctrl[c];
-		    else
-			c = ((unsigned char) c) | CSET_ASCII;
-		    break;
-		case LCHAR_SCOACS:
-		    if (c>=' ') c = ((unsigned char)c) | CSET_SCOACS;
-		    break;
+		    if (c < 256)
+			c |= UNICODE_FLAG;
 		}
 	    }
 	}
+
+	if (!term->no_remote_charset) {
+	    /* Linux direct to font compatability in unicode private zone.
+	     * Maps the VGA rom font (CP437) to U+F000.
+	     * Note: Console tools can change this, but if anything
+	     *       assumes a charmap it has to be this one.
+	     */
+	    if (c >= 0xF000 && c < 0xF100)
+		c = (c & 0xFF) + CSET_SCOACS;
+	}
+
+	if (c >= 256 || (term->termstate != TOPLEVEL && c < 128)) {
+	    c |= UNICODE_FLAG;
+	} else if ( (c=='\033' || c=='\012' || c=='\015' || c=='\b') ||
+	            (!has_compat(OTHER) &&
+		      ( c=='\007' || c=='\011' || c=='\0' ))) {
+	    /* This control character must not be translated by any
+	     * of the translations below.
+	     */
+	}
+	/* Are we in the nasty ACS mode? Note: no sco in utf mode. */
+	    else if(term->sco_acs)
+	{
+	    if (c >= ' ' || term->sco_acs <= 2) {
+		switch(term->sco_acs) {
+		case 0:
+		case 1: break;
+		case 2: if (has_compat(OTHER)) {
+			    c |= 0x80;  /* Linux */
+			    break;
+			}
+			/*FALLTHROUGH*/
+		case 3: c ^= 0x80;  /* Real SCO ansic */
+			break;
+		}
+		c |= CSET_SCOACS;
+	    }
+	} else {
+	    switch (term->cset_attr[term->cset]) {
+		/*
+		 * Linedraw characters are different from 'ESC ( B'
+		 * only for a small range. For ones outside that
+		 * range, make sure we use the same font as well as
+		 * the same encoding.
+		 */
+	      case LCHAR_LINEDRW:
+		if (term->ucsdata->unitab_ctrl[c] != 0xFF)
+		    c = term->ucsdata->unitab_ctrl[c];
+		else if (c >= 0x5f && c < 0x7F)
+		    c = ((unsigned char) c) | CSET_LINEDRW;
+		else
+		    c = ((unsigned char) c) | CSET_ASCII;
+		break;
+
+	      case LCHAR_UKASCII:
+		/* If UK-ASCII, make the '#' a LineDraw Pound */
+		if (c == '#') {
+		    c = '}' | CSET_LINEDRW;
+		    break;
+		}
+	      /*FALLTHROUGH*/
+	      case LCHAR_ASCII:
+		if (term->ucsdata->unitab_ctrl[c] != 0xFF)
+		    c = term->ucsdata->unitab_ctrl[c];
+		else
+		    c = ((unsigned char) c) | CSET_ASCII;
+		break;
+	      case LCHAR_SCOACS:
+		if (c>=' ') c = ((unsigned char)c) | CSET_SCOACS;
+		break;
+	    }
+	}
+
+	/* At this point all character translations are finished. */
+	c &= ~UNICODE_FLAG;
 
 	/*
 	 * How about C1 controls? 
@@ -3451,10 +3545,9 @@ static void term_out(Terminal *term)
 		    term->cset = 0;
 		break;
 	      case '\033':	      /* ESC: Escape */
-		if (term->vt52_mode)
+		if (term->vt52_mode || !has_compat(ANSIMIN))
 		    term->termstate = VT52_ESC;
 		else {
-		    compatibility(ANSIMIN);
 		    term->termstate = SEEN_ESC;
 		    term->esc_query = FALSE;
 		}
@@ -3539,17 +3632,22 @@ static void term_out(Terminal *term)
 		    term->termstate = TOPLEVEL;
 		    break;
 		}
+		term->termstate = SEEN_ESC;
 		/* else fall through */
 	      case SEEN_ESC:
 		if (c >= ' ' && c <= '/') {
-		    if (term->esc_query)
-			term->esc_query = -1;
-		    else
+		    if (term->esc_query == 0)
 			term->esc_query = c;
+		    else if ((term->esc_query & ~0x0000FF) == 0)
+			term->esc_query |= c << 8;
+		    else if ((term->esc_query & ~0x00FFFF) == 0)
+			term->esc_query |= c << 16;
+		    else
+			term->esc_query = -1;
 		    break;
 		}
 		term->termstate = TOPLEVEL;
-		switch (ANSI(c, term->esc_query)) {
+		if (c >= '0' && c <= '~') switch (ANSI(c, term->esc_query)) {
 		  case '[':		/* enter CSI mode */
 		    term->termstate = SEEN_CSI;
 		    term->esc_nargs = 1;
@@ -3732,20 +3830,23 @@ static void term_out(Terminal *term)
 		  /* DOCS: Designate other coding system */
 		  case ANSI('8', '%'):	/* Old Linux code */
 		  case ANSI('G', '%'):
-		    compatibility(OTHER);
-		    if (enable_charset_modes(term))
-			term->utf = 1;
+		    compatibility(ANSI);
+		    if (!term->no_remote_charset) {
+			if (term->ucsdata->line_codepage==CP_UTF8)
+			    term->utf = 0;
+			else
+			    term->utf = 1;
+		    }
 		    break;
-		  case ANSI('@', '%'):
-		    compatibility(OTHER);
-		    if (enable_charset_modes(term))
+		  case ANSI('@', '%'):  /* DOCS, Standard return */
+		    compatibility(ANSI);
+		    if (!term->no_remote_charset)
 			term->utf = 0;
 		    break;
 		}
 		break;
 	      case SEEN_CSI:
-		term->termstate = TOPLEVEL;  /* default */
-		if (isdigit(c)) {
+		if (c>='0' && c<='9') { /* Don't use isdigit, not a char */
 		    if (term->esc_nargs <= ARGS_MAX) {
 			if (term->esc_args[term->esc_nargs - 1] == ARG_DEFAULT)
 			    term->esc_args[term->esc_nargs - 1] = 0;
@@ -3759,22 +3860,23 @@ static void term_out(Terminal *term)
 			else
 			    term->esc_args[term->esc_nargs - 1] = UINT_MAX;
 		    }
-		    term->termstate = SEEN_CSI;
 		} else if (c == ';') {
 		    if (term->esc_nargs < ARGS_MAX)
 			term->esc_args[term->esc_nargs++] = ARG_DEFAULT;
-		    term->termstate = SEEN_CSI;
 		} else if (c < '@') {
-		    if (term->esc_query)
-			term->esc_query = -1;
-		    else if (c == '?')
-			term->esc_query = TRUE;
-		    else
+		    if (term->esc_query == 0)
 			term->esc_query = c;
-		    term->termstate = SEEN_CSI;
-		} else
+		    else if ((term->esc_query & ~0x0000FF) == 0)
+			term->esc_query |= c << 8;
+		    else if ((term->esc_query & ~0x00FFFF) == 0)
+			term->esc_query |= c << 16;
+		    else
+			term->esc_query = -1;
+		} else if (term->termstate == SEEN_CSI) {
 #define CLAMP(arg, lim) ((arg) = ((arg) > (lim)) ? (lim) : (arg))
-		    switch (ANSI(c, term->esc_query)) {
+		    term->termstate = TOPLEVEL;
+		    if (term->esc_query == '?') term->esc_query = TRUE;
+		    if (c >= '@' && c <= '~') switch (ANSI(c, term->esc_query)) {
 		      case 'A':       /* CUU: move up N lines */
 			CLAMP(term->esc_args[0], term->rows);
 			move(term, term->curs.x,
@@ -3964,7 +4066,6 @@ static void term_out(Terminal *term)
 							CONF_printer))[0]) {
 				term->printing = TRUE;
 				term->only_printing = !term->esc_query;
-				term->print_state = 0;
 				term_print_setup(term, printer);
 			    } else if (term->esc_args[0] == 4 &&
 				       term->printing) {
@@ -4689,6 +4790,7 @@ static void term_out(Terminal *term)
 #endif
 			break;
 		    }
+		}
 		break;
 	      case SEEN_OSC:
 		term->osc_w = FALSE;

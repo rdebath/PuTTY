@@ -1838,6 +1838,13 @@ void setup_config_box(struct controlbox *b, int midsession,
     ctrl_combobox(s, "Remote character set:",
 		  'r', 100, HELPCTX(translation_codepage),
 		  codepage_handler, P(NULL), P(NULL));
+    ctrl_radiobuttons(s, "Initial UTF-8 mode", 'i', 3,
+		      HELPCTX(translation_utf8_init_mode),
+		      conf_radiobutton_handler,
+		      I(CONF_utf8_initmode),
+		      "Codepage", I(0),
+		      "UTF-8", I(1),
+		      "Rxvt Mixed", I(2), NULL);
 
     s = ctrl_getset(b, "Window/Translation", "tweaks", NULL);
     ctrl_checkbox(s, "Treat CJK ambiguous characters as wide", 'w',

@@ -136,7 +136,7 @@ struct terminal_tag {
     int insert;			       /* insert-mode flag */
     int cset;			       /* 0 or 1: which char set */
     int save_cset, save_csattr;	       /* saved with cursor position */
-    int save_utf, save_wnext;	       /* saved with cursor position */
+    int save_wnext;		       /* saved with cursor position */
     int rvideo;			       /* global reverse video flag */
     unsigned long rvbell_startpoint;   /* for ESC[?5hESC[?5l vbell */
     int cursor_on;		       /* cursor enabled flag */
@@ -150,12 +150,8 @@ struct terminal_tag {
     int term_editing;		       /* Does terminal want local edit? */
     int sco_acs, save_sco_acs;	       /* CSI 10,11,12m -> OEM charset */
     int utf;			       /* Are we in toggleable UTF-8 mode? */
-    int utf_state;		       /* Is there a pending UTF-8 character */
-    int utf_char;		       /* and what is it so far. */
-    int utf_size;		       /* The size of the UTF character. */
     int width_override;		       /* Is PEC overriding wcwidth */
     int printing, only_printing;       /* Are we doing ANSI printing? */
-    int print_state;		       /* state of print-end-sequence scan */
     bufchain printer_buf;	       /* buffered data for printer */
     printer_job *print_job;
 
@@ -163,7 +159,7 @@ struct terminal_tag {
     pos alt_savecurs;
     int alt_save_attr;
     int alt_save_cset, alt_save_csattr;
-    int alt_save_utf, alt_save_wnext;
+    int alt_save_wnext;
     int alt_save_sco_acs;
     int alt_save_fg_colour, alt_save_bg_colour;
 
@@ -190,7 +186,7 @@ struct terminal_tag {
  * Saved settings on the alternate screen.
  */
     int alt_x, alt_y, alt_om, alt_wrap, alt_wnext, alt_ins;
-    int alt_cset, alt_sco_acs, alt_utf;
+    int alt_cset, alt_sco_acs;
     int alt_t, alt_b;
     int alt_which;
     int alt_sblines; /* # of lines on alternate screen that should be used for scrollback. */
@@ -292,6 +288,12 @@ struct terminal_tag {
      */
     int tblink_pending, cblink_pending;
     long next_tblink, next_cblink;
+
+    /*
+     * Buffer for lookahead processing on the line characters.
+     */
+    unsigned int lookaheadbuf[16];
+    int lookaheadbuf_cnt;
 
     /*
      * These are buffers used by the bidi and Arabic shaping code.
