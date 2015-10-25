@@ -167,6 +167,7 @@ struct unicode_data {
     int dbcs_screenfont;
     int font_codepage;
     int line_codepage;
+    int utf8_locale;
     wchar_t unitab_scoacs[256];
     wchar_t unitab_line[256];
     wchar_t unitab_font[256];
@@ -1251,6 +1252,9 @@ extern const char ver[];
  */
 #ifndef CP_UTF8
 #define CP_UTF8 65001
+#endif
+#ifndef CP_ISO8859_1
+#define CP_ISO8859_1 28591
 #endif
 /* void init_ucs(void); -- this is now in platform-specific headers */
 /* int is_dbcs_leadbyte(int codepage, char byte); -- this is now in platform-specific headers */

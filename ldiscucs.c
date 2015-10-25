@@ -85,7 +85,11 @@ void luni_send(void *handle, const wchar_t *widebuf, int len, int interactive)
 	}
     } else {
 	int rv;
-	rv = wc_to_mb(ldisc->term->ucsdata->line_codepage, 0, widebuf, len,
+	if (ldisc->term->ucsdata->line_codepage == CP_UTF8) {
+	    rv = wc_to_mb(CP_ISO8859_1, 0, widebuf, len,
+		      linebuffer, linesize, NULL, NULL, ldisc->term->ucsdata);
+	} else
+	    rv = wc_to_mb(ldisc->term->ucsdata->line_codepage, 0, widebuf, len,
 		      linebuffer, linesize, NULL, NULL, ldisc->term->ucsdata);
 	if (rv >= 0)
 	    p = linebuffer + rv;
