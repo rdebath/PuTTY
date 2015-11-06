@@ -11,6 +11,7 @@
 #include <assert.h>
 #include "putty.h"
 #include "terminal.h"
+#include "version.h"
 
 #define poslt(p1,p2) ( (p1).y < (p2).y || ( (p1).y == (p2).y && (p1).x < (p2).x ) )
 #define posle(p1,p2) ( (p1).y < (p2).y || ( (p1).y == (p2).y && (p1).x <= (p2).x ) )
@@ -3683,14 +3684,17 @@ static void term_out(Terminal *term)
 		term_out_litchar(term, c);
 		break;
 
-	      case OSC_MAYBE_ST:
+	      case OSC_MAYBE_ST: case DCS_MAYBE_ST:
 		/*
 		 * This state is virtually identical to SEEN_ESC, with the
-		 * exception that we have an OSC sequence in the pipeline,
+		 * exception that we have an OSC/DCS sequence in the pipeline,
 		 * and _if_ we see a backslash, we process it.
 		 */
 		if (c == '\\') {
-		    do_osc(term);
+		    if (term->termstate == OSC_MAYBE_ST)
+			do_osc(term);
+		    if (term->termstate == DCS_MAYBE_ST)
+			/* do_dcs(term) */;
 		    term->termstate = TOPLEVEL;
 		    break;
 		}
@@ -3766,6 +3770,22 @@ static void term_out(Terminal *term)
 			term->curs.y--;
 		    term->wrapnext = FALSE;
 		    seen_disp_event(term);
+		    break;
+		  case 'P':	       /* enter DCS mode */
+		  case '_':	       /* enter APC mode */
+		  case '^':	       /* enter PM mode */
+		  case 'X':	       /* enter SOS mode */
+		    term->termstate = SEEN_DCS;
+		    term->esc_nargs = 1;
+		    term->esc_args[0] = ARG_DEFAULT;
+		    if (c == 'P') {
+			term->esc_query = FALSE;
+		    } else {
+			term->esc_query = c;	/* Save which string type */
+			term->dcs_final = '?';	/* An impossible 'final' */
+			term->dcs_strlen = 0;
+			term->termstate = DCS_STRING;
+		    }
 		    break;
 		  case 'Z':	       /* DECID: terminal type query */
 		    compatibility(VT100);
@@ -3909,7 +3929,7 @@ static void term_out(Terminal *term)
 		    break;
 		}
 		break;
-	      case SEEN_CSI:
+	      case SEEN_CSI: case SEEN_DCS:
 		if (c>='0' && c<='9') { /* Don't use isdigit, not a char */
 		    if (term->esc_nargs <= ARGS_MAX) {
 			if (term->esc_args[term->esc_nargs - 1] == ARG_DEFAULT)
@@ -3983,10 +4003,21 @@ static void term_out(Terminal *term)
 			break;
 		      case ANSI('c', '>'):	/* DA: report xterm version */
 			compatibility(OTHER);
-			/* this reports xterm version 136 so that VIM can
-			   use the drag messages from the mouse reporting */
-			if (term->ldisc)
-			    ldisc_send(term->ldisc, "\033[>0;136;0c", 11, 0);
+			/* Put PuTTY's version number into this string, by DEC
+			 * convention the major version is multiplied by ten
+			 * to allow for a single digit minor version.
+			 * NB: VIM needs this number to be 95 or more for xterm2
+			 * mouse reporting and 277 or more for sgr mouse.
+			 * We used to put 136 in here.
+			 *
+			 * Note: a real VT100 treats this as an alias for CSIc
+			 */
+			if (term->ldisc) {
+			    unsigned short a[4] = {BINARY_VERSION};
+			    char buf[64];
+			    sprintf(buf, "\033[>0;%d;0c", a[1]*10);
+			    ldisc_send(term->ldisc, buf, strlen(buf), 0);
+			}
 			break;
 		      case 'a':		/* HPR: move right N cols */
 			compatibility(ANSI);
@@ -4896,6 +4927,10 @@ static void term_out(Terminal *term)
 #endif
 			break;
 		    }
+		} else if (term->termstate == SEEN_DCS) {
+		    term->dcs_final = c;
+		    term->dcs_strlen = 0;
+		    term->termstate = DCS_STRING;
 		}
 		break;
 	      case SEEN_OSC:
@@ -5020,6 +5055,42 @@ static void term_out(Terminal *term)
 		    }
 		}
 		break;
+	      case DCS_STRING:
+		/*
+		 * DCS strings are defined by DEC to start with a valid CSI
+		 * like sequence; this means it's not quite as bad as OSC
+		 * for unintentional entry, however, it's still only two
+		 * characters so once we get to the string DCS commands will
+		 * be aborted by a CR or LF.
+		 *
+		 * Note for an ECMA "command string" the valid characters are:
+		 *          ^H ^I ^J ^K ^L ^M and Space .. '~'
+		 *
+		 * However, "SOS" uses a 'character string' which is any
+		 * sequence of characters except the terminators.
+		 * DEC ignores all control characters, except aborts.
+		 *
+		 * DCS: -> "command string"
+		 * APC: -> "command string"
+		 * PM: -> "command string"
+		 * SOS: -> "character string"
+		 *
+		 * Note: ECMA-48: The interpretation of the command string
+		 * or the character string is not defined by this Standard,
+		 * but instead requires prior agreement between the sender
+		 * and the recipient of the data.
+		 */
+		if (c == '\012' || c == '\015') {
+		    term->termstate = TOPLEVEL;
+		} else if (c == 0234 || c == '\007') {
+		    /* do_dcs(term) */;
+		    term->termstate = TOPLEVEL;
+		} else if (c == '\033')
+		    term->termstate = DCS_MAYBE_ST;
+		else if (term->dcs_strlen < DCS_STR_MAX)
+		    term->dcs_string[term->dcs_strlen++] = (char)c;
+		break;
+
 	      case SEEN_OSC_P:
 		{
 		    int max = (term->osc_strlen == 0 ? 21 : 15);

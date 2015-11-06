@@ -207,6 +207,11 @@ struct terminal_tag {
     char osc_string[OSC_STR_MAX + 1];
     int osc_w;
 
+#define DCS_STR_MAX OSC_STR_MAX
+#define dcs_final osc_w
+#define dcs_strlen osc_strlen
+#define dcs_string osc_string
+
     char id_string[1024];
 
     unsigned char *tabs;
@@ -222,6 +227,8 @@ struct terminal_tag {
 
 	SEEN_OSC_P,
 	OSC_STRING, OSC_MAYBE_ST,
+	SEEN_DCS,
+	DCS_STRING, DCS_MAYBE_ST,
 	VT52_ESC,
 	VT52_Y1,
 	VT52_Y2,
