@@ -2749,6 +2749,7 @@ static void toggle_mode(Terminal *term, int mode, int query, int state)
 	    break;
 	  case 6:		       /* DECOM: DEC origin mode */
 	    term->dec_om = state;
+	    move(term, 0, 0, (term->dec_om ? 2 : 0));
 	    break;
 	  case 7:		       /* DECAWM: auto wrap */
 	    term->wrap = state;
@@ -3919,7 +3920,9 @@ static void term_out(Terminal *term)
 			if (term->ldisc) {
 			    if (term->esc_args[0] == 6) {
 				char buf[32];
-				sprintf(buf, "\033[%d;%dR", term->curs.y + 1,
+				sprintf(buf, "\033[%d;%dR",
+					term->curs.y + 1
+					- (term->dec_om ? term->marg_t : 0),
 					term->curs.x + 1);
 				ldisc_send(term->ldisc, buf, strlen(buf), 0);
 			    } else if (term->esc_args[0] == 5) {
