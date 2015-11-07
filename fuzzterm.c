@@ -45,22 +45,22 @@ int from_backend(void *frontend, int is_stderr, const char *data, int len)
 
 void request_resize(void *frontend, int x, int y) { }
 void do_text(Context ctx, int x, int y, wchar_t * text, int len,
-	     unsigned long attr, int lattr)
+	     unsigned long attr, int lattr, int fg_col, int bg_col)
 {
     int i;
 
-    printf("TEXT[attr=%08lx,lattr=%02x]@(%d,%d):", attr, lattr, x, y);
+    printf("TEXT[attr=%08lx,lattr=%02x,fg=%d,bg=%d]@(%d,%d):", attr, lattr, fg_col, bg_col, x, y);
     for (i = 0; i < len; i++) {
 	printf(" %x", (unsigned)text[i]);
     }
     printf("\n");
 }
 void do_cursor(Context ctx, int x, int y, wchar_t * text, int len,
-	     unsigned long attr, int lattr)
+	     unsigned long attr, int lattr, int fg_col, int bg_col)
 {
     int i;
 
-    printf("CURS[attr=%08lx,lattr=%02x]@(%d,%d):", attr, lattr, x, y);
+    printf("CURS[attr=%08lx,lattr=%02x,fg=%d,bg=%d]@(%d,%d):", attr, lattr, fg_col, bg_col, x, y);
     for (i = 0; i < len; i++) {
 	printf(" %x", (unsigned)text[i]);
     }
