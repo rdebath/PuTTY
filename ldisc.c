@@ -77,6 +77,54 @@ static void bsb(Ldisc ldisc, int n)
 #define CTRL(x) (x^'@')
 #define KCTRL(x) ((x^'@') | 0x100)
 
+static void ldisc_send_control(Ldisc ldisc, int c)
+{
+    char charbuf[4];
+
+    /*
+     * We don't send IP, SUSP or ABORT if the user has
+     * configured telnet specials off as some hosts
+     * react very poorly to these sequences.
+     *
+     * Also note that most of the backends don't support
+     * these codes anyway. If we're using the SSH backend
+     * we have substitutes, but I don't expect anyone will
+     * want to test them.
+     */
+
+    if (ldisc->protocol == PROT_TELNET && ldisc->telnet_keyboard) {
+	if (c == CTRL('C')) {
+	    ldisc->back->special(ldisc->backhandle, TS_IP);
+	    return;
+	}
+	if (c == CTRL('D')) {
+	    ldisc->back->special(ldisc->backhandle, TS_EOF);
+	    return;
+	}
+	if (c == CTRL('H') || c == CTRL('?')) {
+	    ldisc->back->special(ldisc->backhandle, TS_EC);
+	    return;
+	}
+	if (c == CTRL('Z')) {
+	    ldisc->back->special(ldisc->backhandle, TS_SUSP);
+	    return;
+	}
+	if (c == CTRL('\\')) {
+	    ldisc->back->special(ldisc->backhandle, TS_ABORT);
+	    return;
+	}
+    }
+    if (ldisc->protocol == PROT_TELNET && ldisc->telnet_newline) {
+	if (c == '\r') {
+	    ldisc->back->special(ldisc->backhandle, TS_EOL);
+	    return;
+	}
+    }
+
+    charbuf[0] = c;
+    ldisc->back->send(ldisc->backhandle, charbuf, 1);
+}
+
 void *ldisc_create(Conf *conf, Terminal *term,
 		   Backend *back, void *backhandle,
 		   void *frontend)
@@ -173,7 +221,7 @@ void ldisc_send(void *handle, const char *buf, int len, int interactive)
      */
     if (EDITING) {
 	while (len--) {
-	    int c;
+	    int c, eflag;
 	    c = (unsigned char)(*buf++) + keyflag;
 	    if (!interactive && c == '\r')
 		c += KCTRL('@');
@@ -219,25 +267,23 @@ void ldisc_send(void *handle, const char *buf, int len, int interactive)
 	      case CTRL('C'):	       /* Send IP */
 	      case CTRL('\\'):	       /* Quit */
 	      case CTRL('Z'):	       /* Suspend */
+		eflag = (ldisc->buflen != 0);
 		while (ldisc->buflen > 0) {
 		    if (ECHOING)
 			bsb(ldisc, plen(ldisc, ldisc->buf[ldisc->buflen - 1]));
 		    ldisc->buflen--;
 		}
-		ldisc->back->special(ldisc->backhandle, TS_EL);
-                /*
-                 * We don't send IP, SUSP or ABORT if the user has
-                 * configured telnet specials off! This breaks
-                 * talkers otherwise.
-                 */
-                if (!ldisc->telnet_keyboard)
-                    goto default_case;
-		if (c == CTRL('C'))
-		    ldisc->back->special(ldisc->backhandle, TS_IP);
-		if (c == CTRL('Z'))
-		    ldisc->back->special(ldisc->backhandle, TS_SUSP);
-		if (c == CTRL('\\'))
-		    ldisc->back->special(ldisc->backhandle, TS_ABORT);
+
+		/* Support those users who use ^C to clear the line. (Humph!) */
+		/* ie: Only send the control if we had nothing in the buffer. */
+		if (eflag) {
+		    /* Also only send TS_EL if telnet_keyboard is active */
+		    if (ldisc->protocol == PROT_TELNET && ldisc->telnet_keyboard)
+			ldisc->back->special(ldisc->backhandle, TS_EL);
+		    break;
+		}
+
+		ldisc_send_control(ldisc, c);
 		break;
 	      case CTRL('R'):	       /* redraw line */
 		if (ECHOING) {
@@ -252,7 +298,7 @@ void ldisc_send(void *handle, const char *buf, int len, int interactive)
 		break;
 	      case CTRL('D'):	       /* logout or send */
 		if (ldisc->buflen == 0) {
-		    ldisc->back->special(ldisc->backhandle, TS_EOF);
+		    ldisc_send_control(ldisc, c);
 		} else {
 		    ldisc->back->send(ldisc->backhandle, ldisc->buf, ldisc->buflen);
 		    ldisc->buflen = 0;
@@ -293,10 +339,8 @@ void ldisc_send(void *handle, const char *buf, int len, int interactive)
 			ldisc->back->send(ldisc->backhandle, ldisc->buf, ldisc->buflen);
 		    if (ldisc->protocol == PROT_RAW)
 			ldisc->back->send(ldisc->backhandle, "\r\n", 2);
-		    else if (ldisc->protocol == PROT_TELNET && ldisc->telnet_newline)
-			ldisc->back->special(ldisc->backhandle, TS_EOL);
 		    else
-			ldisc->back->send(ldisc->backhandle, "\r", 1);
+			ldisc_send_control(ldisc, '\r');
 		    if (ECHOING)
 			c_write(ldisc, "\r\n", 2);
 		    ldisc->buflen = 0;
@@ -304,7 +348,6 @@ void ldisc_send(void *handle, const char *buf, int len, int interactive)
 		}
 		/* FALLTHROUGH */
 	      default:		       /* get to this label from ^V handler */
-                default_case:
 		if (ldisc->buflen >= ldisc->bufsiz) {
 		    ldisc->bufsiz = ldisc->buflen + 256;
 		    ldisc->buf = sresize(ldisc->buf, ldisc->bufsiz, char);
@@ -327,30 +370,16 @@ void ldisc_send(void *handle, const char *buf, int len, int interactive)
 	if (len > 0) {
 	    if (ECHOING)
 		c_write(ldisc, buf, len);
-	    if (keyflag && ldisc->protocol == PROT_TELNET && len == 1) {
+	    if (keyflag && len == 1) {
+
 		switch (buf[0]) {
 		  case CTRL('M'):
-		    if (ldisc->protocol == PROT_TELNET && ldisc->telnet_newline)
-			ldisc->back->special(ldisc->backhandle, TS_EOL);
-		    else
-			ldisc->back->send(ldisc->backhandle, "\r", 1);
-		    break;
 		  case CTRL('?'):
 		  case CTRL('H'):
-		    if (ldisc->telnet_keyboard) {
-			ldisc->back->special(ldisc->backhandle, TS_EC);
-			break;
-		    }
 		  case CTRL('C'):
-		    if (ldisc->telnet_keyboard) {
-			ldisc->back->special(ldisc->backhandle, TS_IP);
-			break;
-		    }
 		  case CTRL('Z'):
-		    if (ldisc->telnet_keyboard) {
-			ldisc->back->special(ldisc->backhandle, TS_SUSP);
-			break;
-		    }
+		    ldisc_send_control(ldisc, buf[0]);
+		    break;
 
 		  default:
 		    ldisc->back->send(ldisc->backhandle, buf, len);
