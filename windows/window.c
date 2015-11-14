@@ -4416,9 +4416,15 @@ static int TranslateKey(UINT message, WPARAM wParam, LPARAM lParam,
 	    return 0;
 	}
 	if (wParam == VK_CANCEL && shift_state == 2) {	/* Ctrl-Break */
-	    if (back)
-		back->special(backhandle, TS_BRK);
-	    return 0;
+	    if (conf_get_int(conf, CONF_protocol) == PROT_SERIAL) {
+		if (back)
+		    back->special(backhandle, TS_BRK);
+		return 0;
+	    } else {
+		*p++ = 3;
+		*p++ = 0;
+		return -2;
+	    }
 	}
 	if (wParam == VK_PAUSE) {      /* Break/Pause */
 	    *p++ = 26;
