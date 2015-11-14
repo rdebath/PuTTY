@@ -3768,6 +3768,11 @@ static void term_out(Terminal *term)
 			    }
 			}
 			break;
+		      case ANSI('g', '='):
+			compatibility(SCOANSI);
+			c = CSET_SCOACS| (0xFF & term->esc_args[0]);
+			term_out_litchar(term, c);
+			break;
 		      case 'r':       /* DECSTBM: set scroll margins */
 			compatibility(VT100);
 			if (term->esc_nargs <= 2) {
