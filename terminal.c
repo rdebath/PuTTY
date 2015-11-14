@@ -3967,6 +3967,22 @@ static void term_out(Terminal *term)
 			    }
 			}
 			break;			
+		      case ANSI_QUE('n'):
+			compatibility(VT102);
+			{
+			    if (term->esc_nargs != 1) break;
+			    if (term->esc_args[0] != 15) break;
+			    if (*conf_get_str(term->conf, CONF_printer))
+				/* Printer ready */
+				ldisc_send(term->ldisc, "\033[?10n", 6, 0);
+			    else
+				/* Printer offline. */
+				ldisc_send(term->ldisc, "\033[?11n", 6, 0);
+			    /* No printer attached.
+				ldisc_send(term->ldisc, "\033[?13n", 6, 0);
+			    */
+			}
+			break;
 		      case 'l':       /* RM: toggle modes to low */
 		      case ANSI_QUE('l'):
 			compatibility(VT100);
