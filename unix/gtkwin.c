@@ -1212,8 +1212,9 @@ gint key_event(GtkWidget *widget, GdkEventKey *event, gpointer data)
             debug((" - Return special case, translating as 0d + special\n"));
 #endif
 	    output[1] = '\015';
+	    output[2] = '\012';
 	    use_ucsoutput = FALSE;
-	    end = 2;
+	    end = 2 + (inst->term->cr_lf_return != 0);
 	    special = TRUE;
 	}
 
