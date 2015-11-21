@@ -4522,6 +4522,7 @@ static void term_out(Terminal *term)
 		switch (c) {
 		  case 'P':	       /* Linux palette sequence */
 		    term->termstate = SEEN_OSC_P;
+		    term->esc_args[0] = UINT_MAX;
 		    term->osc_strlen = 0;
 		    break;
 		  case 'R':	       /* Linux palette reset */
@@ -4618,7 +4619,7 @@ static void term_out(Terminal *term)
 		    else if ((int)c >= 'a' && (int)c <= 'a' + max - 10)
 			val = c - 'a' + 10;
 		    else {
-			term->termstate = TOPLEVEL;
+			term->termstate = OSC_STRING;
 			break;
 		    }
 		    term->osc_string[term->osc_strlen++] = val;
