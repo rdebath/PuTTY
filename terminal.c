@@ -4148,6 +4148,11 @@ static void term_out(Terminal *term)
 				    compatibility2(OTHER, VT220);
 				    term->curr_attr &= ~ATTR_REVERSE;
 				    break;
+				  case 51:
+				    /* Revert the effects of CSI=F ans CSI=G */
+				    compatibility(SCOANSI);
+				    term->default_attr = ATTR_DEFAULT;
+				    break;
 				  case 30:
 				  case 31:
 				  case 32:
