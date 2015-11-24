@@ -5583,7 +5583,7 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 	    }
 
 #ifdef PLATFORM_IS_UTF16
-	    if (tchar > 0x10000 && tchar < 0x110000) {
+	    if (tchar >= 0x10000 && tchar < 0x110000) {
 		ch[ccount++] = (wchar_t) HIGH_SURROGATE_OF(tchar);
 		ch[ccount++] = (wchar_t) LOW_SURROGATE_OF(tchar);
 	    } else
@@ -5617,7 +5617,7 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 		    }
 
 #ifdef PLATFORM_IS_UTF16
-		    if (schar > 0x10000 && schar < 0x110000) {
+		    if (schar >= 0x10000 && schar < 0x110000) {
 			ch[ccount++] = (wchar_t) HIGH_SURROGATE_OF(schar);
 			ch[ccount++] = (wchar_t) LOW_SURROGATE_OF(schar);
 		    } else
@@ -5900,7 +5900,7 @@ static void clipme(Terminal *term, pos top, pos bottom, int rect, int desel)
 
 		c = (uc & ~CSET_MASK);
 #ifdef PLATFORM_IS_UTF16
-		if (uc > 0x10000 && uc < 0x110000) {
+		if (uc >= 0x10000 && uc < 0x110000) {
 		    cbuf[0] = 0xD800 | ((uc - 0x10000) >> 10);
 		    cbuf[1] = 0xDC00 | ((uc - 0x10000) & 0x3FF);
 		    cbuf[2] = 0;
