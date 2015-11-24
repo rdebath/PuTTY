@@ -5148,10 +5148,8 @@ static termchar *term_bidi_line(Terminal *term, struct termline *ldata,
 
 		switch (uc & CSET_MASK) {
 		  case CSET_LINEDRW:
-		    if (!term->rawcnp) {
-			uc = term->ucsdata->unitab_xterm[uc & 0xFF];
-			break;
-		    }
+		    uc = term->ucsdata->unitab_xterm[uc & 0xFF];
+		    break;
 		  case CSET_ASCII:
 		    uc = term->ucsdata->unitab_line[uc & 0xFF];
 		    break;
