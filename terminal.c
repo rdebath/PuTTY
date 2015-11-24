@@ -1683,6 +1683,8 @@ Terminal *term_init(Conf *myconf, struct unicode_data *ucsdata,
     term->cr_lf_return = FALSE;
     term->seen_disp_event = FALSE;
     term->mouse_is_down = FALSE;
+    term->vttest_norevwrap = FALSE;
+    term->vttest_decmodes = FALSE;
     term->reset_132 = FALSE;
     term->cblinker = term->tblinker = 0;
     term->has_focus = 1;
@@ -2625,9 +2627,17 @@ static void toggle_mode(Terminal *term, int mode, int query, int state)
 	    term->vt52_mode = !state;
 	    break;
 	  case 3:		       /* DECCOLM: 80/132 columns */
+	    if (!term->vttest_decmodes) break;
 	    deselect(term);
-	    if (!term->no_remote_resize)
-		request_resize(term->frontend, state ? 132 : 80, term->rows);
+	    if (!term->no_remote_resize) {
+		/* Most applications realise that terminal resizes are
+		 * requests and that you likely won't get what you ask for.
+		 * Programs that use this sequence aren't so smart.
+		 */
+		set_zoomed(term->frontend, FALSE);
+		request_resize(term->frontend, state ? 132 : 80, 24);
+		term_size(term, 24, state ? 132 : 80, term->savelines);
+	    }
 	    term->reset_132 = state;
 	    term->alt_t = term->marg_t = 0;
 	    term->alt_b = term->marg_b = term->rows - 1;
@@ -2670,6 +2680,20 @@ static void toggle_mode(Terminal *term, int mode, int query, int state)
 	    compatibility2(OTHER, VT220);
 	    term->cursor_on = state;
 	    seen_disp_event(term);
+	    break;
+	  case 40:		       /* Turn on DECCOLM and friends */
+	    compatibility(OTHER);
+	    term->vttest_decmodes = state;
+	    if (state) {
+		if (term->utf) term->utf8linedraw = 1;
+	    } else {
+		term->utf8linedraw =
+		    conf_get_int(term->conf, CONF_utf8linedraw);
+	    }
+	    break;
+	  case 45:		       /* Reverse-wraparound Mode */
+	    compatibility(OTHER);
+	    term->vttest_norevwrap = !state;
 	    break;
 	  case 47:		       /* alternate screen */
 	    compatibility(OTHER);
@@ -3406,15 +3430,16 @@ static void term_out(Terminal *term)
 		}
 		break;
 	      case '\b':	      /* BS: Back space */
-		if (term->curs.x == 0 &&
+		if (term->curs.x == 0 && term->vttest_norevwrap)
+		    /* do nothing */ ;
+		else if (term->curs.x == 0 &&
 		    (term->curs.y == 0 || term->wrap == 0))
 		    /* do nothing */ ;
 		else if (term->curs.x == 0 && term->curs.y > 0)
 		    term->curs.x = term->cols - 1, term->curs.y--;
-		else if (term->wrapnext)
-		    term->wrapnext = FALSE;
-		else
+		else if (!term->wrapnext || term->vttest_norevwrap)
 		    term->curs.x--;
+		term->wrapnext = FALSE;
 		seen_disp_event(term);
 		break;
 	      case '\016':	      /* LS1: Locking-shift one */
@@ -3780,6 +3805,9 @@ static void term_out(Terminal *term)
                             for (i = 0; i < term->esc_args[0]; i++)
                                 term_display_graphic_char(
                                     term, term->last_graphic_char);
+			    /* Add a nasal demon for vttest */
+			    if (term->vttest_decmodes)
+				term->last_graphic_char = 0x3020;
                         }
                         break;
 		      case ANSI('c', '>'):	/* DA: report xterm version */
