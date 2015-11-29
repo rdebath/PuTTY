@@ -1240,6 +1240,7 @@ static void power_on(Terminal *term, int clear)
     term->alt_cset = term->cset = term->save_cset = term->alt_save_cset = 0;
     term->alt_utf = term->utf = term->save_utf = term->alt_save_utf = 0;
     term->utf_state = 0;
+    term->width_override = 0;
     term->alt_sco_acs = term->sco_acs =
         term->save_sco_acs = term->alt_save_sco_acs = 0;
     term->cset_attr[0] = term->cset_attr[1] =
@@ -2745,6 +2746,23 @@ static void term_out_litchar(Terminal *term, unsigned long c)
     /* Everybody forgets that a unicode control char can get to here ... */
     if (width < 0) return;
 
+    if (width > 0) {
+	/* If the width override is set the least significant two bits
+	 * specify which width you want to override to.
+	 */
+	if (term->width_override)
+	    width = 1 + (term->width_override & 1);
+	/*
+	 * If other bits are set the state will be reset automatically,
+	 * but rather than a plain set to zero we're allowing the user
+	 * to specify how long to stay in this state by treating the
+	 * high bits as a counter.
+	 */
+	if (term->width_override & ~7)
+	    term->width_override -= 4;
+	else if (term->width_override & ~3)
+	    term->width_override = 0;
+    }
     if (term->wrapnext && term->wrap && width > 0) {
 	cline->lattr |= LATTR_WRAPPED;
 	if (term->curs.y == term->marg_b)
@@ -4277,6 +4295,10 @@ static void term_out(Terminal *term)
 			compatibility(SCOANSI);
 			term->use_bce = (term->esc_args[0] <= 0);
 			set_erase_char(term);
+			break;
+		      case ANSI('Z', ' '): /* PEC - PRESENTATION EXPAND OR CONTRACT */
+			compatibility(ANSI);
+			term->width_override = term->esc_args[0];
 			break;
 		      case ANSI('p', '"'): /* DECSCL: set compat level */
 			/*

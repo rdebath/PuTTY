@@ -130,6 +130,7 @@ struct terminal_tag {
     int utf_state;		       /* Is there a pending UTF-8 character */
     int utf_char;		       /* and what is it so far. */
     int utf_size;		       /* The size of the UTF character. */
+    int width_override;		       /* Is PEC overriding wcwidth */
     int printing, only_printing;       /* Are we doing ANSI printing? */
     int print_state;		       /* state of print-end-sequence scan */
     bufchain printer_buf;	       /* buffered data for printer */
