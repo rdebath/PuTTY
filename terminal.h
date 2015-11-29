@@ -151,6 +151,7 @@ struct terminal_tag {
     int repeat_off, cr_lf_return;
     int seen_disp_event;
     int big_cursor;
+    unsigned long lastc;	       /* For repeat */
 
     int xterm_mouse;		       /* send mouse messages to host */
     int xterm_extended_mouse;

@@ -2873,6 +2873,7 @@ static void term_out_litchar(Terminal *term, unsigned long c)
       default:
 	return;
     }
+    term->lastc = c;
     term->curs.x++;
     if (term->curs.x == term->cols) {
 	term->curs.x--;
@@ -3563,6 +3564,15 @@ static void term_out(Terminal *term)
 			CLAMP(term->esc_args[0], term->rows);
 			move(term, term->curs.x,
 			     term->curs.y + def(term->esc_args[0], 1), 1);
+			seen_disp_event(term);
+			break;
+		      case 'b':		/* REP: repeat */
+			compatibility(ANSI);
+			{
+			    int i;
+			    for(i=0; i<def(term->esc_args[0], 1); i++)
+				term_out_litchar(term, term->lastc);
+			}
 			seen_disp_event(term);
 			break;
 		      case ANSI('c', '>'):	/* DA: report xterm version */
