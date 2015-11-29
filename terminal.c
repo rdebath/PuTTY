@@ -2732,12 +2732,18 @@ static void term_out_litchar(Terminal *term, unsigned long c)
     termline *cline = scrlineptr(term->curs.y);
     int width = 0;
 
+    /* An ASCII control char can't get to here ... */
+    if (c < ' ') return;
+
     if (DIRECT_CHAR(c))
 	width = 1;
     if (!width)
 	width = (term->cjk_ambig_wide ?
 		 mk_wcwidth_cjk((unsigned int) c) :
 		 mk_wcwidth((unsigned int) c));
+
+    /* Everybody forgets that a unicode control char can get to here ... */
+    if (width < 0) return;
 
     if (term->wrapnext && term->wrap && width > 0) {
 	cline->lattr |= LATTR_WRAPPED;
