@@ -1350,7 +1350,7 @@ gint key_event(GtkWidget *widget, GdkEventKey *event, gpointer data)
 		 * in xterm function key mode we change which two...
 		 */
 	      case GDK_KEY_KP_Add:
-		if (conf_get_int(inst->conf, CONF_funky_type) == FUNKY_XTERM) {
+		if (inst->term->funky_type == FUNKY_XTERM) {
 		    if (event->state & GDK_SHIFT_MASK)
 			xkey = 'l';
 		    else
@@ -1401,7 +1401,7 @@ gint key_event(GtkWidget *widget, GdkEventKey *event, gpointer data)
 	 */
 	{
 	    int code = 0;
-	    int funky_type = conf_get_int(inst->conf, CONF_funky_type);
+	    int funky_type = inst->term->funky_type;
 	    switch (event->keyval) {
 	      case GDK_KEY_F1:
 		code = (event->state & GDK_SHIFT_MASK ? 23 : 11);
@@ -1619,7 +1619,7 @@ gint key_event(GtkWidget *widget, GdkEventKey *event, gpointer data)
 	      case GDK_KEY_Down: case GDK_KEY_KP_Down: xkey = 'B'; break;
 	      case GDK_KEY_Right: case GDK_KEY_KP_Right: xkey = 'C'; break;
 	      case GDK_KEY_Left: case GDK_KEY_KP_Left: xkey = 'D'; break;
-	      case GDK_KEY_Begin: case GDK_KEY_KP_Begin: xkey = 'G'; break;
+	      case GDK_KEY_Begin: case GDK_KEY_KP_Begin: xkey = (inst->term->funky_type == FUNKY_SCO)?'E':'G'; break;
 	    }
 	    if (xkey) {
 		end = 1 + format_arrow_key(output+1, inst->term, xkey,
