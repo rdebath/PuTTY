@@ -1251,25 +1251,14 @@ gint key_event(GtkWidget *widget, GdkEventKey *event, gpointer data)
 	}
 
 	/* We don't let GTK tell us what Backspace is! We know better. */
-	if (event->keyval == GDK_KEY_BackSpace &&
-	    !(event->state & GDK_SHIFT_MASK)) {
-	    output[1] = conf_get_int(inst->conf, CONF_bksp_is_delete) ?
-		'\x7F' : '\x08';
+	/* For Shift (or Ctrl) Backspace, do opposite of what is configured. */
+	if (event->keyval == GDK_KEY_BackSpace)
+	{
+	    output[1] = !conf_get_int(inst->conf, CONF_bksp_is_delete)
+			!= !(event->state & (GDK_SHIFT_MASK|GDK_CONTROL_MASK))
+			? '\x7F' : '\x08';
 #ifdef KEY_EVENT_DIAGNOSTICS
-            debug((" - Backspace, translating as %02x\n",
-                   (unsigned)output[1]));
-#endif
-	    use_ucsoutput = FALSE;
-	    end = 2;
-	    special = TRUE;
-	}
-	/* For Shift Backspace, do opposite of what is configured. */
-	if (event->keyval == GDK_KEY_BackSpace &&
-	    (event->state & GDK_SHIFT_MASK)) {
-	    output[1] = conf_get_int(inst->conf, CONF_bksp_is_delete) ?
-		'\x08' : '\x7F';
-#ifdef KEY_EVENT_DIAGNOSTICS
-            debug((" - Shift-Backspace, translating as %02x\n",
+            debug((" - **-Backspace, translating as %02x\n",
                    (unsigned)output[1]));
 #endif
 	    use_ucsoutput = FALSE;
