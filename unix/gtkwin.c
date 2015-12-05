@@ -3016,15 +3016,32 @@ static void draw_set_colour(struct draw_ctx *dctx, int col)
 {
 #ifdef DRAW_TEXT_GDK
     if (dctx->uctx.type == DRAWTYPE_GDK) {
-        gdk_gc_set_foreground(dctx->uctx.u.gdk.gc, &dctx->inst->cols[col]);
+	if (col < NALLCOLOURS)
+	    gdk_gc_set_foreground(dctx->uctx.u.gdk.gc, &dctx->inst->cols[col]);
+	else {
+	    GdkColor colour;
+	    colour.red = 0x0101 * ((col>>16)&0xFF);
+	    colour.green = 0x0101 * ((col>>8)&0xFF);
+	    colour.blue = 0x0101 * ((col)&0xFF);
+	    gdk_gc_set_rgb_fg_color(dctx->uctx.u.gdk.gc, &colour);
+	}
     }
 #endif
 #ifdef DRAW_TEXT_CAIRO
     if (dctx->uctx.type == DRAWTYPE_CAIRO) {
-        cairo_set_source_rgb(dctx->uctx.u.cairo.cr,
-                             dctx->inst->cols[col].red / 65535.0,
-                             dctx->inst->cols[col].green / 65535.0,
-                             dctx->inst->cols[col].blue / 65535.0);
+	if (col < NALLCOLOURS)
+	    cairo_set_source_rgb(dctx->uctx.u.cairo.cr,
+				 dctx->inst->cols[col].red / 65535.0,
+				 dctx->inst->cols[col].green / 65535.0,
+				 dctx->inst->cols[col].blue / 65535.0);
+	else {
+	    int r,g,b;
+	    r = ((col>>16)&0xFF);
+	    g = ((col>> 8)&0xFF);
+	    b = ((col    )&0xFF);
+	    cairo_set_source_rgb(dctx->uctx.u.cairo.cr,
+				 r / 255.0, g / 255.0, b / 255.0);
+	}
     }
 #endif
 }
@@ -3222,7 +3239,7 @@ static void draw_backing_rect(struct gui_data *inst)
  * We are allowed to fiddle with the contents of `text'.
  */
 void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
-		      unsigned long attr, int lattr)
+		      unsigned long attr, int lattr, int fg_col, int bg_col)
 {
     struct draw_ctx *dctx = (struct draw_ctx *)ctx;
     struct gui_data *inst = dctx->inst;
@@ -3239,6 +3256,8 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
 
     nfg = ((monochrome ? ATTR_DEFFG : (attr & ATTR_FGMASK)) >> ATTR_FGSHIFT);
     nbg = ((monochrome ? ATTR_DEFBG : (attr & ATTR_BGMASK)) >> ATTR_BGSHIFT);
+    if (fg_col) nfg = fg_col;
+    if (bg_col) nbg = bg_col;
     if (!!(attr & ATTR_REVERSE) ^ (monochrome && (attr & TATTR_ACTCURS))) {
 	t = nfg;
 	nfg = nbg;
@@ -3246,11 +3265,11 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
     }
     if ((inst->bold_style & 2) && (attr & ATTR_BOLD)) {
 	if (nfg < 16) nfg |= 8;
-	else if (nfg >= 256) nfg |= 1;
+	else if (nfg >= 256 && nfg < NALLCOLOURS) nfg |= 1;
     }
     if ((inst->bold_style & 2) && (attr & ATTR_BLINK)) {
 	if (nbg < 16) nbg |= 8;
-	else if (nbg >= 256) nbg |= 1;
+	else if (nbg >= 256 && nbg < NALLCOLOURS) nbg |= 1;
     }
     if ((attr & TATTR_ACTCURS) && !monochrome) {
 	nfg = 260;
@@ -3362,13 +3381,13 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
 }
 
 void do_text(Context ctx, int x, int y, wchar_t *text, int len,
-	     unsigned long attr, int lattr)
+	     unsigned long attr, int lattr, int fg_col, int bg_col)
 {
     struct draw_ctx *dctx = (struct draw_ctx *)ctx;
     struct gui_data *inst = dctx->inst;
     int widefactor;
 
-    do_text_internal(ctx, x, y, text, len, attr, lattr);
+    do_text_internal(ctx, x, y, text, len, attr, lattr, fg_col, bg_col);
 
     if (attr & ATTR_WIDE) {
 	widefactor = 2;
@@ -3392,7 +3411,7 @@ void do_text(Context ctx, int x, int y, wchar_t *text, int len,
 }
 
 void do_cursor(Context ctx, int x, int y, wchar_t *text, int len,
-	       unsigned long attr, int lattr)
+	       unsigned long attr, int lattr, int fg_col, int bg_col)
 {
     struct draw_ctx *dctx = (struct draw_ctx *)ctx;
     struct gui_data *inst = dctx->inst;
@@ -3409,7 +3428,7 @@ void do_cursor(Context ctx, int x, int y, wchar_t *text, int len,
         active = 1;
     } else
         active = 0;
-    do_text_internal(ctx, x, y, text, len, attr, lattr);
+    do_text_internal(ctx, x, y, text, len, attr, lattr, fg_col, bg_col);
 
     if (attr & TATTR_COMBINING)
 	len = 1;
