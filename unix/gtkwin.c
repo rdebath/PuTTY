@@ -1200,9 +1200,14 @@ gint key_event(GtkWidget *widget, GdkEventKey *event, gpointer data)
 #ifdef KEY_EVENT_DIAGNOSTICS
             debug((" - Ctrl-Break special case, sending TS_BRK\n"));
 #endif
-	    if (inst->back)
-		inst->back->special(inst->backhandle, TS_BRK);
-	    return TRUE;
+	    if (conf_get_int(inst->conf, CONF_protocol) == PROT_SERIAL) {
+		if (inst->back)
+		    inst->back->special(inst->backhandle, TS_BRK);
+		return TRUE;
+	    } else {
+		output[1] = 3;
+		end = 2;
+	    }
 	}
 
 	/* We handle Return ourselves, because it needs to be flagged as
