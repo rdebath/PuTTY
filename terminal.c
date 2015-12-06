@@ -54,7 +54,7 @@
 #define VBELL_DELAY     (VBELL_TIMEOUT) /* visual bell timeout in ticks */
 
 #define enable_charset_modes(term) (term->no_remote_charset == 0 && \
-                                    (!in_utf(term) || term->utf == 2 ))
+                                    (term->utf == 0 || term->utf == 2))
 
 #define compatibility(x) \
     if ( ((CL_##x)&term->compatibility_level) == 0 ) { 	\
@@ -1348,6 +1348,8 @@ static void power_on(Terminal *term, int clear)
     term->alt_wrap = term->wrap = conf_get_int(term->conf, CONF_wrap_mode);
     term->alt_cset = term->cset = term->save_cset = term->alt_save_cset = 0;
     term->utf = conf_get_int(term->conf, CONF_utf8_initmode);
+    if (!term->utf && term->ucsdata->line_codepage==CP_UTF8)
+	term->utf = 1;
     if (!term->utf && conf_get_int(term->conf, CONF_utf8_override))
 	term->utf = term->ucsdata->utf8_locale;
     term->width_override = 0;
@@ -1668,6 +1670,9 @@ void term_reconfig(Terminal *term, Conf *conf)
     term->utf = conf_get_int(term->conf, CONF_utf8_initmode);
     if (!term->utf && conf_get_int(term->conf, CONF_utf8_override))
 	term->utf = term->ucsdata->utf8_locale;
+    /* NOTE: This isn't really ready yet ... */
+    if (!term->utf && term->ucsdata->line_codepage==CP_UTF8)
+	term->utf = 1;
     if (!conf_get_str(term->conf, CONF_printer)) {
 	term_print_finish(term);
     }
@@ -3212,7 +3217,7 @@ static void term_out(Terminal *term)
 
 	/* First see about all those translations. */
 	if (term->termstate >= VT52_ESC) c |= UNICODE_FLAG;
-	if (in_utf(term) && (c & UNICODE_FLAG) == 0) {
+	if (term->utf && (c & UNICODE_FLAG) == 0) {
 	    int safely = term->utf != 2;
 	    if (!safely && term->sco_acs)
 		;
@@ -3831,12 +3836,8 @@ static void term_out(Terminal *term)
 		  case ANSI('8', '%'):	/* Old Linux code */
 		  case ANSI('G', '%'):
 		    compatibility(ANSI);
-		    if (!term->no_remote_charset) {
-			if (term->ucsdata->line_codepage==CP_UTF8)
-			    term->utf = 0;
-			else
-			    term->utf = 1;
-		    }
+		    if (enable_charset_modes(term))
+			term->utf = 1;
 		    break;
 		  case ANSI('@', '%'):  /* DOCS, Standard return */
 		    compatibility(ANSI);
