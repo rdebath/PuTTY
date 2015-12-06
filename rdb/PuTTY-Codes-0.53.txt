@@ -1,0 +1,280 @@
+Control Characters
+------------------
+
+Note:   Control characters not mentioned below are normally ignored.
+
+^E              ENQ: terminal type query (Transmits "answerback")
+^G              BEL: Sound a bell or visible bell.
+^H              BS: Back space (will reverse wrap if in wraping mode)
+^N              LS1: Locking-shift one: Make G1 current character set.
+^O              LS0: Locking-shift zero: Make G0 current character set.
+^[              ESC: Escape, if vt52 mode --> VT52_ESC
+                             else --> SEEN_ESC
+^M              CR: Carriage return
+^L              FF: Form feed: if ANSI enabled == CSI H CSI J
+                               else == ^J
+^K              VT: Line tabulation == ^J
+^J              LF: Line feed (will CR too if mode set)
+^I              HT: Character tabulation
+^?              Destructive backspace (don't use; can be disabled)
+
+C1 Control characters
+---------------------
+Bytes in the range 0x80 .. 0x9F are known as C1 controls.
+These set SEEN_ESC (canceling any sequence in progress) and execute
+the sequence specified by the code in the range ESC @ to ESC _ (upper
+case letters)
+
+Except for the single character DECID (ESC Z) which is explicitly
+ignored.
+
+In UTF-8 mode the two byte sequences for the characters in the range
+U+0080 to U+009F are filtered out and so ignored for security reasons.
+
+SEEN_ESC
+--------
+
+ESC \           ST: String terminator ignored here.
+ESC [           CSI: Prefix --> SEEN_CSI
+ESC ]           OSC: Prefix --> SEEN_OSC
+ESC 7           DECSC: save cursor
+ESC 8           DECRC: restore cursor
+ESC =           DECKPAM: Keypad application mode
+ESC >           DECKPNM: Keypad numeric mode
+ESC D           IND: exactly equivalent to LF
+ESC E           NEL: exactly equivalent to CR-LF
+ESC M           RI: reverse index - backwards LF
+ESC Z           DECID: terminal type query  (Transmits "id_string")
+ESC c           RIS: restore power-on settings
+ESC H           HTS: set a tab
+ESC # 8         DECALN: Dec Alignment check.  Fills screen with Es :-)
+ESC # 3         DECDHL: 2*height, top
+ESC # 4         DECDHL: 2*height, bottom
+ESC # 5         DECSWL: normal
+ESC # 6         DECDWL: 2*width
+
+ESC % @         DOCS: Designate other coding system; Return to ISO-2022
+ESC % G         DOCS: UTF-8, Standard Return required.
+ESC % 8         DOCS: UTF-8, Private Linux
+
+ESC ( A         G0 designate 94-set -- UK ASCII
+ESC ( B         G0 designate 94-set -- US ASCII
+ESC ( 0         G0 designate 94-set -- Line drawing
+ESC ( U         G0 designate 94-set -- Linux CP437
+ESC ) A         G1 designate 94-set -- UK ASCII
+ESC ) B         G1 designate 94-set -- US ASCII
+ESC ) 0         G1 designate 94-set -- Line drawing
+ESC ) U         G1 designate 94-set -- Linux CP437
+
+SEEN_OSC
+--------
+OSC P           Linux palette setting --> SEEN_OSC_P
+OSC R           Reset Linux palette (doesn't require ST)
+OSC W           --> SEEN_OSC_W
+OSC 0-9         Add argument for OSC string.
+OSC 2 L         DECterm title string. Like OSC 1
+OSC <anything>  XTerm title string. (CR,LF will cancel; ^G or
+                ST will set)
+
+Note:           All OSC sequences should be terminated with an ST.
+                OSC P and OSC R don't have to be but should be for
+                compatibility with strict ANSI parsers.
+
+SEEN_OSC_P
+----------
+OSC P Pc Pr Pg Pb ESC \
+                Sets palette entry Pc is base36 colour number.
+                Pr Pg and Pb are two digit hex colour intensity
+                values for red, green and blue. The base36
+                digits are case insensitive.
+
+SEEN_OSC_W
+----------
+OCS W ...       Wordness    ------> See code!!
+
+
+SEEN_CSI
+--------
+Once a CSI prefix is seen a string of (up to 32) arguments are
+collected as semicolon separated decimal numbers. A single
+intermediate character (less than '@') may be included at
+any point; the first character of '@' or above is the final
+character of the sequence. No defined sequence has more than one
+intermediate character. If an argument is omitted it's assumed
+to be zero; many controls will treat zero the same as one.
+
+CSI A           CUU: move up N lines
+CSI e           VPR: move down N lines (as CUD)
+CSI B           CUD: Cursor down
+CSI a           HPR: move right N cols (as CUF)
+CSI C           CUF: Cursor right
+CSI > c         DA: report xterm version for VIM mouse messages.
+CSI D           CUB: move left N cols
+CSI E           CNL: move down N lines and CR
+CSI F           CPL: move up N lines and CR
+CSI G           CHA as HPA
+CSI `           HPA: set horizontal posn
+CSI d           VPA: set vertical posn
+CSI f           HVP as CUP
+CSI H           CUP: set horz and vert posns at once
+CSI J           ED: erase screen or parts of it
+CSI K           EL: erase line or parts of it
+CSI L           IL: insert lines
+CSI M           DL: delete lines
+CSI @           ICH: insert chars
+CSI P           DCH: delete chars
+CSI c           DA: terminal type query (Transmits "id_string")
+CSI 5 n         Terminal okay query, replies with ESC 0n
+CSI 6 n         DSR: cursor position query
+CSI h           SM: toggle modes to high (See modes below)
+CSI ? h         SM: toggle modes to high (See modes below)
+CSI l           RM: toggle modes to low (See modes below)
+CSI ? l         RM: toggle modes to low (See modes below)
+CSI i           MC: Media copy (arg 5 starts print, arg 4 finishes it)
+CSI ? i         MC: Media copy (arg 5 starts print, arg 4 finishes it)
+CSI 0 g         TBC: clear this tab
+CSI 3 g         TBC: clear all tabs
+CSI r           DECSTBM: set scroll margins
+CSI m           SGR: set graphics rendition  (See below)
+CSI s           ANSI save cursor
+CSI u           ANSI restore cursor
+CSI t           DECSLPP: set page size (See below)
+CSI S           SU: Scroll up
+CSI T           SD: Scroll down
+CSI * |         DECSNLS: VT420 lines on screen
+CSI $ |         DECSCPP: VT420 columns on screen
+CSI X           ECH: write N spaces w/o moving cursor
+CSI x           DECREQTPARM: report terminal characteristics
+                            (Transmits "ESC [2;1;1;112;112;1;0x"
+CSI Z           CBT: Back tab.
+CSI = E         SCO: Set "blinkisreal" = (Pn >= 1);
+CSI = L         SCO: arg = 0  background color erase is on. arg =
+                1 turn it off.
+
+NOTE: The "blinkisreal" flag causes PuTTY to render blinking text as
+"bright background" if false.
+
+CSI " p         DECSCL: set compat level (Default to PuTTY)
+CSI 61 " p      DECSCL: Disable most VT220 and above controls.
+CSI 62 " p      DECSCL: Disable most VT300 and above controls.
+CSI 63 " p      DECSCL: Enable all VTxxx controls.
+CSI 6x " p      DECSCL: Enable all VTxxx controls.
+CSI 40 " p      Disable all VT specific controls
+CSI 41 " p      Renable all control sequences.
+CSI 42 " p      Disable all except SCO ansi
+CSI 50 ; Pn.. " p   Set the "id_string" to all the args except the 50.
+
+SGR: set graphics rendition  CSI m
+----------------------------------
+The arguments to CSI m are (mostly) independent the effect is
+identical if the arguments are each placed individually into a
+CSI m or joind together in a single list.
+
+CSI 0 m         restore defaults
+CSI 1 m         enable bold
+CSI 4 m         enable underline
+CSI 5 m         enable blink (see "blinkisreal")
+CSI 7 m         enable reverse video
+CSI 10 m        SCO acs off
+CSI 11 m        Use CP437 ROM set, many control characters
+                become printable.
+CSI 12 m        Use CP437 ROM set, top half only.
+
+CSI 21 m        As CSI 4 m
+CSI 22 m        disable bold
+CSI 24 m        disable underline
+CSI 25 m        disable blink
+CSI 27 m        disable reverse video
+
+CSI 39 m        default-foreground
+CSI 49 m        default-background
+
+CSI 30 m to CSI 37 m    Set foreground colour
+CSI 40 m to CSI 47 m    Set background colour
+
+NOTE: The "blinkisreal" flag causes PuTTY to render blinking text as
+"bright background" if false.
+
+DECSLPP: set page size
+----------------------
+
+CSI Pn t        Where Pn = 24/25/36/48/72/144; Set lines on screen.
+
+CSI 1 t         Undo minimise PuTTY
+CSI 2 t         Minimise PuTTY
+CSI 3;P1;P2 t   Move PuTTY's window
+CSI 4 t         Resize PuTTY's window (not implemented)
+CSI 5 t         Bring PuTTY to the front.
+CSI 6 t         Push PuTTY to the back.
+CSI 7 t         Refresh PuTTY 's window.
+CSI 8;Pr;Pc t   Resize window to Pr rows & Pc columns.
+CSI 9;Pn t      If Pn == 1 Maximise PuTTY else restore.
+CSI 11 t        Query of PuTTY is minimised.
+CSI 13 t        Query window position.
+CSI 14 t        Query window size in pixels.
+CSI 18 t        Query window size in characters.
+CSI 19 t        Query screen size in characters (not implemeted)
+CSI 20 t        Query window title (may be disabled)
+CSI 21 t        Query window title (may be disabled)
+
+Modes
+-----
+CSI 4 h/l       IRM: set insert mode
+CSI 12 h/l      SRM: set echo mode
+CSI 20 h/l      LNM: Return sends CR or CRLF
+CSI 34 h/l      WYULCURM: Make cursor BIG
+
+CSI ? 1 h/l     DECCKM: application cursor keys
+CSI ? 2 l       DECANM: VT52 mode
+CSI ? 3 h/l     DECCOLM: 80/132 columns
+CSI ? 5 h/l     DECSCNM: reverse video
+CSI ? 6 h/l     DECOM: DEC origin mode
+CSI ? 7 h/l     DECAWM: auto wrap
+CSI ? 8 h/l     DECARM: auto key repeat
+CSI ? 10 h/l    DECEDM: set local edit mode
+CSI ? 25 h/l    DECTCEM: enable/disable cursor
+CSI ? 47 h/l    alternate screen
+CSI ? 1000 h/l  xterm mouse 1 (normal)
+CSI ? 1002 h/l  xterm mouse 2 (inc. button drags)
+
+VT52_ESC
+--------
+ESC A           Cursor up
+ESC B           Cursor down
+ESC C           Cursor right
+ESC D           Cursor left
+ESC F           Select line drawing character set in GL = G0
+ESC G           Select US Ascii character set in GL = G0
+ESC H           Home cursor
+ESC I           Reverse scroll screen
+ESC J           Clear to end of screen
+ESC K           Clear to end of line
+ESC Y Pr Pc     More to Row/Col Pr & Pc are single byte value
+                space is top left.
+ESC Z           DECID: terminal type query  (Transmits "id_string")
+ESC =           DECKPAM: Keypad application mode
+ESC >           DECKPNM: Keypad numeric mode
+ESC <           Return to VT100 emulation
+
+Note:           All below are extensions from various sources.
+
+ESC E           Clear screen & home cursor
+ESC L           Insert line
+ESC M           Delete line
+ESC b           Set foreground colour
+ESC c           Set background colour
+                Chars 0-7 are as CSI m chars 8 and up are bright versions.
+ESC d           Erase to top of screen.
+ESC e           Cursor on
+ESC f           Cursor off
+ESC l           Erase entire line and CR
+ESC o           Erase to start of line.
+ESC p           Set reverse attribute
+ESC q           Clear reverse attribute.
+ESC v           Turn on auto wrap (without xenl glitch)
+ESC w           Turn off auto wrap
+ESC R           Turn off all attributes
+ESC S           Turn on underline attribute
+ESC W           Turn off underline attribute
+ESC U           Turn on bold attribute.
+ESC T           Turn off bold attribute

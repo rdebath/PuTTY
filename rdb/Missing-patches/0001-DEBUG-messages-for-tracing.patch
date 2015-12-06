@@ -1,0 +1,201 @@
+From f07f460f5482151257a1e25fd69f66dd761c8048 Mon Sep 17 00:00:00 2001
+From: Robert de Bath <rdebath@tvisiontech.co.uk>
+Date: Sun, 18 May 2014 11:21:45 +0100
+Subject: [PATCH] DEBUG messages for tracing
+
+---
+ terminal.c       | 14 ++++++++++++++
+ timing.c         | 16 +++++++++++++++-
+ unix/gtkwin.c    | 26 ++++++++++++++++++++++++++
+ windows/window.c | 30 ++++++++++++++++++++++++++++++
+ 4 files changed, 85 insertions(+), 1 deletion(-)
+
+diff --git a/terminal.c b/terminal.c
+index 483ff00..17422b5 100644
+--- a/terminal.c
++++ b/terminal.c
+@@ -1150,6 +1150,12 @@ static void term_timer(void *ctx, unsigned long now)
+     Terminal *term = (Terminal *)ctx;
+     int update = FALSE;
+ 
++#ifdef DEBUG_CHARSTREAM
++    debug(("term_timer() TBlink=%d, CBlink=%d, VBell=%d\n",
++	    term->tblink_pending,
++	    term->cblink_pending,
++	    term->in_vbell));
++#endif
+     if (term->tblink_pending && now == term->next_tblink) {
+ 	term->tblinker = !term->tblinker;
+ 	term->tblink_pending = FALSE;
+@@ -3076,6 +3082,10 @@ static void term_out(Terminal *term)
+ 	    continue;
+ 	}
+ 
++#ifdef DEBUG_CHARSTREAM
++	debug(("Char 0x%02x '%c'\n", c, ((c>' '&&c<='~')?c:' ') ));
++#endif
++
+ 	/* First see about all those translations. */
+ 	if (term->termstate >= VT52_ESC) c |= UNICODE_FLAG;
+ 	if (in_utf(term) && (c & UNICODE_FLAG) == 0) {
+@@ -3315,6 +3325,10 @@ static void term_out(Terminal *term)
+ 	/* At this point all character translations are finished. */
+ 	c &= ~UNICODE_FLAG;
+ 
++#ifdef DEBUG_CHARSTREAM
++	debug(("Trns 0x%02x '%c'\n", c, ((c>' '&&c<='~')?c:' ') ));
++#endif
++
+ 	/*
+ 	 * How about C1 controls? 
+ 	 * Explicitly ignore SCI (0x9a), which we don't translate to DECID.
+diff --git a/timing.c b/timing.c
+index ac0c49b..c403b22 100644
+--- a/timing.c
++++ b/timing.c
+@@ -112,7 +112,9 @@ unsigned long schedule_timer(int ticks, timer_fn_t fn, void *ctx)
+     struct timer *t, *first;
+ 
+     init_timers();
+-
++#ifdef DEBUG_TICKER
++    debug(("schedule_timer(%d, %p, %p)\n", ticks, fn, ctx));
++#endif
+     now = GETTICKCOUNT();
+     when = ticks + now;
+ 
+@@ -142,6 +144,9 @@ unsigned long schedule_timer(int ticks, timer_fn_t fn, void *ctx)
+ 	 * This timer is the very first on the list, so we must
+ 	 * notify the front end.
+ 	 */
++#ifdef DEBUG_TICKER
++	debug(("calling timer_change_notify(%ld)\n", first->now));
++#endif
+ 	timer_change_notify(first->now);
+     }
+ 
+@@ -160,6 +165,9 @@ int run_timers(unsigned long anow, unsigned long *next)
+     init_timers();
+ 
+     now = GETTICKCOUNT();
++#ifdef DEBUG_TICKER
++    debug(("run_timer(%ld, ...) at %ld\n", anow, now));
++#endif
+ 
+     while (1) {
+ 	first = (struct timer *)index234(timers, 0);
+@@ -180,6 +188,9 @@ int run_timers(unsigned long anow, unsigned long *next)
+ 	     * This timer is active and has reached its running
+ 	     * time. Run it.
+ 	     */
++#ifdef DEBUG_TICKER
++	    debug(("running timer(%p) for %ld at %ld\n", first->fn, first->now, now));
++#endif
+ 	    delpos234(timers, 0);
+ 	    first->fn(first->ctx, first->now);
+ 	    sfree(first);
+@@ -188,6 +199,9 @@ int run_timers(unsigned long anow, unsigned long *next)
+ 	     * This is the first still-active timer that is in the
+ 	     * future. Return how long it has yet to go.
+ 	     */
++#ifdef DEBUG_TICKER
++	    debug(("Waiting for %ld at %ld (%ldms)\n", first->now, now, first->now-now));
++#endif
+ 	    *next = first->now;
+ 	    return TRUE;
+ 	}
+diff --git a/unix/gtkwin.c b/unix/gtkwin.c
+index 49a6516..9ba1d8e 100644
+--- a/unix/gtkwin.c
++++ b/unix/gtkwin.c
+@@ -3546,6 +3546,32 @@ void do_text(Context ctx, int x, int y, wchar_t *text, int len,
+     struct gui_data *inst = dctx->inst;
+     int widefactor;
+ 
++#ifdef DEBUG_CHARSTREAM
++    {
++	static int disable_count = 1000;
++	int i;
++	int cset = 0;
++	if (disable_count > 0) {
++	    if (DIRECT_FONT(text[0]) ) cset = text[0] & CSET_MASK;
++	    debug(("do_text(ctx[%d], %d, %d, ", disable_count, x,y));
++	    if (cset == CSET_ACP) debug(("A+"));
++	    else if (cset == CSET_OEMCP) debug(("D+"));
++	    else if (cset != 0) debug(("<U+%2xXX>", cset >> 8));
++	    debug(("\""));
++	    for(i=0;i<len;i++) {
++		int c = text[i] ^ cset;
++		if (c >= ' ' && c <= '~')
++		    debug(("%c", c));
++		else
++		    debug(("<U+%04x>", text[i]));
++	    }
++	    debug(("\", %d, %lx, %x)\n", len,attr,lattr));
++	    if (--disable_count == 0)
++		debug(("do_text logging disabled\n"));
++	}
++    }
++#endif
++
+     do_text_internal(ctx, x, y, text, len, attr, lattr, fg_col, bg_col);
+ 
+     if (attr & ATTR_WIDE) {
+diff --git a/windows/window.c b/windows/window.c
+index ef0e2ad..2c6433e 100644
+--- a/windows/window.c
++++ b/windows/window.c
+@@ -348,6 +348,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
+     HRESULT hr;
+     int guess_width, guess_height;
+ 
++    debug(("Starting\n"));
++
+     hinst = inst;
+     hwnd = NULL;
+     flags = FLAG_VERBOSE | FLAG_INTERACTIVE;
+@@ -861,6 +863,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
+     term_set_focus(term, GetForegroundWindow() == hwnd);
+     UpdateWindow(hwnd);
+ 
++    debug(("Starting Windows message loop\n"));
++
+     while (1) {
+ 	HANDLE *handles;
+ 	int nhandles, n;
+@@ -3817,6 +3821,32 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
+ void do_text(Context ctx, int x, int y, wchar_t *text, int len,
+ 	     unsigned long attr, int lattr, int fg_col, int bg_col)
+ {
++#ifdef DEBUG_CHARSTREAM
++    {
++	static int disable_count = 1000;
++	int i;
++	int cset = 0;
++	if (disable_count > 0) {
++	    if (DIRECT_FONT(text[0]) ) cset = text[0] & CSET_MASK;
++	    debug(("do_text(ctx[%d], %d, %d, ", disable_count, x,y));
++	    if (cset == CSET_ACP) debug(("A+"));
++	    else if (cset == CSET_OEMCP) debug(("D+"));
++	    else if (cset != 0) debug(("<U+%2xXX>", cset >> 8));
++	    debug(("\""));
++	    for(i=0;i<len;i++) {
++		int c = text[i] ^ cset;
++		if (c >= ' ' && c <= '~')
++		    debug(("%c", c));
++		else
++		    debug(("<U+%04x>", text[i]));
++	    }
++	    debug(("\", %d, %lx, %x)\n", len,attr,lattr));
++	    if (--disable_count == 0)
++		debug(("do_text logging disabled\n"));
++	}
++    }
++#endif
++
+     if (attr & TATTR_COMBINING) {
+ 	unsigned long a = 0;
+ 	int len0 = 1;
+-- 
+2.1.4
+

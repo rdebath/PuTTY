@@ -1,0 +1,58 @@
+#!/bin/bash
+set -e
+
+# This is required to clear the windows compile timestamp, and, obviously,
+# it makes things smaller.
+
+for i in $(ls windows/*.exe)
+do
+    j=$(basename $i .exe)
+    i686-w64-mingw32-strip -p $i
+    [ -f unix/$j ] && strip -p unix/$j
+done
+
+NCOMMIT=$(
+{
+    {
+	sed 's/^[	]*//' <<!
+	These files are a compile of my patched version of PuTTY.
+
+	The "exe" files are Windows, the others are compiled for Debian Jessie.
+
+	The putty-src.zip file contains the source that was used for
+	this build including the Makefiles made by mkfiles.pl. Newlines
+	have been converted to CR-LF for dumb dos programs.
+
+!
+    } | echo "100644 blob $(git hash-object -w --stdin)	README.txt"
+
+    [ -f putty-src.zip ] &&
+	echo "100644 blob $(git hash-object -w putty-src.zip)	putty-src.zip"
+
+    for i in $(ls windows/*.exe)
+    do
+	j=$(basename $i .exe)
+	echo "100755 blob $(git hash-object -w $i)	$j.exe"
+	[ -f unix/$j ] &&
+	echo "100755 blob $(git hash-object -w unix/$j)	$j"
+    done
+} | {
+
+echo "tree $(git mktree)
+author Makefile <> $(date +%s) +0000
+committer Makefile <> $(date +%s) +0000
+
+PuTTY binaries.
+" ; } | git hash-object -t commit -w --stdin )
+
+# If 'binary' branch is missing create it quietly.
+[ "$(git show-ref --hash refs/heads/binary)" = "" ] &&
+    git update-ref refs/heads/binary $NCOMMIT
+
+# Only update if the tree changed.
+[ "$(git log -1 --format=%T $NCOMMIT)" != "$(git log -1 --format=%T refs/heads/binary)" ] && {
+    git update-ref refs/heads/binary $NCOMMIT
+    echo Updated refs/heads/binary
+}
+
+exit 0

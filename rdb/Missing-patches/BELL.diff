@@ -1,0 +1,20 @@
+diff --git a/unix/gtkwin.c b/unix/gtkwin.c
+index 54f5028..41872d1 100644
+--- a/unix/gtkwin.c
++++ b/unix/gtkwin.c
+@@ -2165,8 +2165,15 @@ void sys_cursor(void *frontend, int x, int y)
+  */
+ void do_beep(void *frontend, int mode)
+ {
++    /* BELL_DISABLED, BELL_DEFAULT, BELL_VISUAL, BELL_WAVEFILE, BELL_PCSPEAKER */
+     if (mode == BELL_DEFAULT)
+ 	gdk_beep();
++    if (mode == BELL_WAVEFILE) {
++	Filename *bell_wavefile = conf_get_filename(conf, CONF_bell_wavefile);
++	call_play_command(bell_wavefile->path);
++    }
++    if (mode == BELL_PCSPEAKER)
++	call_beep_command();
+ }
+ 
+ int char_width(Context ctx, int uc)

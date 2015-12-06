@@ -1,0 +1,161 @@
+
+Screen snapshot...
+    Pushes a snap of the current screen into the scrollback.
+    Might be very useful if it's the alternate screen.
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+termchars_equal_override() is a misshapen function to override the
+    base for cc_next.
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+URL: http://www.9bis.net/kitty/
+    Big collection of other patches
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+Remove all trace of locked in UTF-8 mode.
+    Keep "disable all character set controls" though.
+
+Remove ANSISYS mode.
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+Local echo:
+    If something comes down the line clear the pending input and redraw
+    it after.
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+Use "GRCM" to override the CSI 10 m problem?
+   CSI 21 h/l 
+
+Cross build each major release, publish "puttytel-0.45.exe" and so forth.
+    DO NOT publish old SSH versions.
+
+Timer starvation occurs on unix (Not Windows)
+    Need new timer starvation fix!
+    Can be triggered with the "tack" program's padding tests.
+	(PuTTY does NOT need padding, except it may help with this.)
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+CSI ? 12 h -- Turn on blinking cursor. From "att610" via XTerm
+CSI ? 12 l -- Turn off blinking cursor. From "att610" via XTerm
+
+CSI Ps SP q	(via XTerm)
+          Set cursor style (DECSCUSR, VT520).
+            Ps = 0  -> blinking block.
+            Ps = 1  -> blinking block (default).
+            Ps = 2  -> steady block.
+            Ps = 3  -> blinking underline.
+            Ps = 4  -> steady underline.
+            Ps = 5  -> blinking bar (xterm).
+            Ps = 6  -> steady bar (xterm).
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+Freeze colours in the scrollback ?
+    Colours 0..15 and 256..511 are dynamic, if they're turned into 24bit
+    colours on save this will do it.
+
+Should I remove 256 colours from the 'Frontends' ?
+    Replace with a pallette managed by terminal.c, frontends know about
+    16 colours (System defined to be like the VGA colours) and 24 bit
+    overrides that they ignore if the "256 Colour mode" is turned off.
+
+    Frontend is still informed if the first 16 colours are redefined
+    but they can ignore this too.
+
+    Redefinition of 256 colours could be supported in this case; perhaps
+    even redefinition of 32767 colours.
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+DLL interface
+    Allow other emulations, with the lookahead buffer we now have a method
+    of allowing another emulation to intercept some or all of the functions.
+
+For UTF8 Update
+    Pull 'compatibility' updates out into own patch
+
+    Should lookahead buffer be a bag (self expanding) ?
+
+    MBCS addition: take note that wchar_t is UTF16 on Windows. ****! ****! ****!
+	Fix mb_to_wc ?
+
+    Other codepages configured from host ?
+
+    POSIX 2001 adds the wcwidth() to the C library.
+    But, Unicode.org keeps changing it.
+    Existing version is frozen based on a specific version of the standard,
+    The Width override sequence can be used to fix any errors.
+
+CSI function to select function key layout.
+    Put it into the terminfo init & reset sequences (perhaps even into smcup)
+    and the function keys will never be wrong.
+    
+    REJECT.
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+UTF8 Fonts
+
+    It would appear that there will remain very few fonts that covert the
+    entire unicode range. PuTTY should allow a more general method for
+    selecting fonts for various ranges.
+
+    The best method for specifing these ranges is not clear.
+
+Portable PuTTY
+
+    Give the Windows version a "-load" flag to load a Unix session file.
+	-- Problem SSH host keys.
+	-? Only one needed per remote, add to session file ?
+	-? Conflict between session host key and system ? Timestamp?
+
+Use TCL or other scripting language for the dialog box.
+
+    Makes the configuration an external app, PuTTY keeps running naturally.
+    Needs IPC to prod putty to reload 'Current Config'.
+	Process termination and file modification time ?
+
+    Get expanding boxes, nice scripting etc etc.
+    Easy, for more people, to modify.
+    Can have 'start and stay open' for config box (AKA real apply button).
+    Dumb replacements too "pterm -e vi $HOME/.putty/tmp/Config.1234"
+
+
+Dynamic Attributes
+
+    Some attributes don't need interpretation in the display driver as they
+    don't have a unique display 'footprint'. These attributes could be stored
+    only in the current state in the term structure.
+
+    ATTR_BLINK		    Just redraw
+    ATTR_BLINK As BRIGHT    Use different colours
+    ATTR_REVERSE	    Swap the colours
+    ATTR_SELECTION	    Swap the colours again
+    ATTR_ITALIC		    Swap the colours yet again ("standout")
+    ATTR_DIM		    Use different colours
+    ATTR_CONCEAL	    Use different colours
+    ATTR_BGBOLD             Use different colours
+
+    Some of these would still need representation in the display array
+    in terminal.c, for example ATTR_BLINK needs to get translated to a
+    physical representation on the fly for 'Blink On' and 'Blink Off'.
+
+    Does this mean we want a new ATTR_* set just for terminal.[ch] ?
+
+    Physical attributes:
+	ATTR_FGCOLOUR
+	ATTR_BGCOLOUR
+	ATTR_BOLD	Font only.
+	ATTR_ULINE
+
+    Conditional, terminal.c needs to change on a timer or event.
+	ATTR_SELECTION
+	ATTR_CONCEAL
+	ATTR_BLINK	Not bright BG.
+

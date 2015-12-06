@@ -1,0 +1,56 @@
+From 2bbfebe868f13804961d03d8874cb0acbc45e74c Mon Sep 17 00:00:00 2001
+From: Robert de Bath <rdebath@tvisiontech.co.uk>
+Date: Sun, 28 Sep 2014 10:41:33 +0100
+Subject: [PATCH] UnixGTK: Fix big cursor CSI sequence.
+
+This enables the sequence "CSI 34 l" and "CSI 34 h" to allow the host
+to switch the cursor to the big block (if it's currently the one of the
+line cursors)
+
+Windows already worked like this.
+---
+ unix/gtkwin.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git unix/gtkwin.c unix/gtkwin.c
+index db53a4a..2dd48a3 100644
+--- unix/gtkwin.c
++++ unix/gtkwin.c
+@@ -2538,6 +2538,7 @@ void do_cursor(Context ctx, int x, int y, wchar_t *text, int len,
+ {
+     struct draw_ctx *dctx = (struct draw_ctx *)ctx;
+     struct gui_data *inst = dctx->inst;
++    int cur_type = inst->term->big_cursor?0:inst->cursor_type;
+     GdkGC *gc = dctx->gc;
+ 
+     int active, passive, widefactor;
+@@ -2547,7 +2548,7 @@ void do_cursor(Context ctx, int x, int y, wchar_t *text, int len,
+ 	passive = 1;
+     } else
+ 	passive = 0;
+-    if ((attr & TATTR_ACTCURS) && inst->cursor_type != 0) {
++    if ((attr & TATTR_ACTCURS) && cur_type != 0) {
+ 	attr &= ~TATTR_ACTCURS;
+         active = 1;
+     } else
+@@ -2572,7 +2573,7 @@ void do_cursor(Context ctx, int x, int y, wchar_t *text, int len,
+ 	len *= 2;
+     }
+ 
+-    if (inst->cursor_type == 0) {
++    if (cur_type == 0) {
+ 	/*
+ 	 * An active block cursor will already have been done by
+ 	 * the above do_text call, so we only need to do anything
+@@ -2596,7 +2597,7 @@ void do_cursor(Context ctx, int x, int y, wchar_t *text, int len,
+ 	else
+ 	    char_width = inst->font_width;
+ 
+-	if (inst->cursor_type == 1) {
++	if (cur_type == 1) {
+ 	    uheight = inst->fonts[0]->ascent + 1;
+ 	    if (uheight >= inst->font_height)
+ 		uheight = inst->font_height - 1;
+-- 
+2.1.4
+

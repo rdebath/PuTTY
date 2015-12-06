@@ -1,0 +1,196 @@
+
+REMOTE=$(shell git show-ref --hash origin/master | head -1)
+FORKED=$(shell git merge-base $(REMOTE) HEAD)
+PVER=$(shell git log --format=%d --decorate=short --simplify-by-decoration $(FORKED) | awk '/^..tag:/{gsub("[^0-9.]","",$$2);print $$2;exit;}')
+MDIF=$(shell git show-branch $(PVER) $(FORKED) | grep '^ + ' | wc -l )
+RDIF=$(shell git show-branch $(FORKED) HEAD | grep '^ + ' | wc -l )
+CDATE=$(shell git log -1 --format='%h %ci' | awk '{print $$2;}')
+FDATE=$(shell git log -1 --format='%h %ci' $(FORKED) | awk '{print $$2;}')
+
+BVER=$(shell echo $(PVER) | sed -e 's/\./,/' -e 's/$$/,'"$(MDIF),$(RDIF)"'/')
+VER=$(PVER).$(MDIF) $(FDATE) +RdB-$(RDIF) $(CDATE)
+SVER=$(PVER).$(MDIF)+RdB-$(RDIF)
+J99=-j99
+CNF=$(J99)
+
+WINTGT=/tmp/putty
+WINTOOLPATH32=i686-w64-mingw32-
+WINTOOLPATH64=x86_64-w64-mingw32-
+
+# The Cygwin makefile is a proper unix makefile, but the FLAGS to GCC
+# are messed up. So I override the lot.
+WINCFLAGS = -Wall -O2 -std=c90 -fstack-protector -D_WINDOWS -D_NO_OLDNAMES \
+                -I.././ -I../charset/ -I../windows/
+
+ifeq ($(wildcard version.h),)
+# For version 0.63
+WINCFLAGS += -DSECURITY_WIN32
+endif
+
+WINLDFLAGS = -static -fstack-protector -Wl,--nxcompat -Wl,--dynamicbase -s
+
+WINCNF=$(CNF) CFLAGS="$(WINCFLAGS)" LDFLAGS="$(WINLDFLAGS)"
+
+all: unix-all windows-all
+
+flags:
+	@echo REMOTE=$(REMOTE)
+	@echo FORKED=$(FORKED)
+	@echo PVER=$(PVER)
+	@echo MDIF=$(MDIF)
+	@echo RDIF=$(RDIF)
+	@echo CDATE=$(CDATE)
+	@echo FDATE=$(FDATE)
+	@echo BVER=$(BVER)
+	@echo VER=$(VER)
+	@echo SVER=$(SVER)
+	@echo CNF=$(CNF)
+
+complete: all doc-all icons-all
+
+pterm: unix-pterm
+
+putty: unix-putty windows-putty
+
+# All cleanup
+
+clean: unix/Makefile.gtk windows/Makefile.cyg
+	make -C unix -f Makefile.gtk clean
+	make -C windows -f Makefile.cyg clean
+	make -C doc clean
+	make -C icons clean
+	@-[ ! -d macosx ] || make -C macosx clean
+	@# Clean version.h, and remove the makefiles so it gets regenerated.
+	@-[ ! -f version.bak ] || mv -f version.bak version.h
+	@-rm -f unix/Makefile.gtk windows/Makefile.vc windows/Makefile.cyg
+
+doc-all:
+	make -C doc
+
+# NB: make install in here changes files in other directories ... those files
+# are generated. BUT mkfiles.pl *requires* them to exist.
+icons-all:
+	make -C icons
+
+# Unix (Linux) compile
+
+unix-all: unix/Makefile.gtk
+	make $(CNF) -C unix -f Makefile.gtk
+
+unix-putty: unix/Makefile.gtk
+	make $(CNF) -C unix -f Makefile.gtk putty
+
+unix-pterm: unix/Makefile.gtk
+	make $(CNF) -C unix -f Makefile.gtk pterm
+
+# WINDOWS Cross compile
+
+windows-all: windows/Makefile.cyg
+	make TOOLPATH=$(WINTOOLPATH32) $(WINCNF) -C windows -f Makefile.cyg
+
+windows-putty: windows/Makefile.cyg
+	make TOOLPATH=$(WINTOOLPATH32) $(WINCNF) -C windows -f Makefile.cyg putty.exe
+
+windows-x64: windows/Makefile.cyg
+	make TOOLPATH=$(WINTOOLPATH64) $(WINCNF) -C windows -f Makefile.cyg
+
+# Makefiles
+
+unix/Makefile.gtk windows/Makefile.vc windows/Makefile.cyg: mkfiles.pl
+	./mkfiles.pl
+ifneq ($(wildcard version.h),)
+	@echo Dynamic change made to version.h, you should use:
+	@echo : git update-index --assume-unchanged version.h
+	[ -f version.bak ] || mv version.h version.bak
+	echo "#define TEXTVER" '"'"$(VER)"'"'			> version.h
+	echo "#define SSHVER" '"'"PuTTY-$(SVER)"'"' 		>> version.h
+	echo "#define BINARY_VERSION" $(BVER)			>> version.h
+endif
+
+push:	unix-all windows-all binary-branch
+	git push git@github.com:rdebath/PuTTY.git $(PUSHARGS) \
+		origin/master:refs/heads/master \
+		+binary \
+		+putty-rdb \
+		`git tag | grep ^0.`
+	git fetch rdebath
+
+fetch:
+	git fetch origin
+	git push git@github.com:rdebath/PuTTY.git origin/master:refs/heads/master
+	git fetch rdebath
+
+binary-branch: unix-all windows-all
+	rdb/mkzip.sh
+	rdb/git-commit-putty-bin
+
+# WINDOWS Compile archive
+zip: windows/Makefile.vc
+	-mkdir -p $(WINTGT)
+	-rm $(WINTGT)/putty.zip
+	rsync -vrc --delete --delete-excluded \
+		--exclude /.pc --exclude /.git\* \
+		--exclude='*.orig' --exclude='*.rej' \
+		--exclude=unix/plink --exclude=unix/pscp \
+		--exclude=unix/psftp --exclude=unix/pterm \
+		--exclude=unix/putty --exclude=unix/puttygen \
+		--exclude=unix/puttytel \
+		--exclude='*.obj' \
+		--exclude='*.rsp' --exclude='*.res' \
+		--exclude='*.map' --exclude='*.o' \
+		--exclude='*.zip' --exclude='*.tgz' \
+		--exclude='x' --exclude='x?' \
+		. $(WINTGT)/putty
+
+	cd $(WINTGT)/putty ; \
+	zip -Dq9rp \
+		$(WINTGT)/putty.zip . \
+		-x \*.obj \*.exe \*.rsp \*.map \*.res
+
+
+realclean distclean: clean
+	@echo : Removing more generated files.
+	@# Recipe
+	@-rm -f charset/sbcsdat.c
+	@-rm -f empty.h
+	@-rm -f Makefile.am
+	@-rm -f macosx/Makefile
+	@-rm -f unix/Makefile.am
+	@-rm -f unix/Makefile.ux
+	@-rm -f unix/Makefile.gtk
+	@# Windows
+	@-rm -f windows/Makefile.cyg
+	@-rm -f windows/Makefile.vc
+	@-rm -f windows/Makefile.bor
+	@-rm -f windows/Makefile.lcc
+	@-rm -rf windows/VS2010
+	@-rm -rf windows/VS2012
+	@-rm -rf windows/MSVC
+	@-rm -rf windows/DEVCPP
+	@# autoconf clutter
+	@-rm -rf .deps/
+	@-rm -rf charset/.deps/
+	@-rm -rf unix/.deps/
+	@-rm -rf autom4te.cache
+	@-rm -f Makefile
+	@-rm -f Makefile.in
+	@-rm -f aclocal.m4
+	@-rm -f ar-lib
+	@-rm -f compile
+	@-rm -f config.log
+	@-rm -f config.status
+	@-rm -f configure
+	@-rm -f depcomp
+	@-rm -f install-sh
+	@-rm -f missing
+	@-rm -f stamp-h1
+	@-rm -f uxconfig.h
+	@-rm -f uxconfig.in
+	@# autoconf build
+	@-rm -f *.o charset/*.o
+	@-rm -f charset/.dirstamp unix/.dirstamp
+	@-rm -f fuzzterm pageant plink pscp psftp
+	@-rm -f pterm putty puttygen puttytel
+	@# Simon's clutter
+	@-[ ! -f licence.pl ] || rm -f doc/licence.but doc/copy.but licence.h
+	@-rm -f putty-src.zip
