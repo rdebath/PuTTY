@@ -3361,7 +3361,7 @@ static void term_out(Terminal *term)
 	    }
 	}
 
-	if (!term->no_remote_charset) {
+	if (!term->no_remote_charset && term->utf <= 2) {
 	    /* Linux direct to font compatability in unicode private zone.
 	     * Maps the VGA rom font (CP437) to U+F000.
 	     * Note: Console tools can change this, but if anything
@@ -3893,13 +3893,19 @@ static void term_out(Terminal *term)
 		  case ANSI('8', '%'):	/* Old Linux code */
 		  case ANSI('G', '%'):
 		    compatibility(ANSI);
-		    if (enable_charset_modes(term))
+		    if (!term->no_remote_charset && term->utf < 2)
 			term->utf = 1;
 		    break;
 		  case ANSI('@', '%'):  /* DOCS, Standard return */
 		    compatibility(ANSI);
-		    if (!term->no_remote_charset)
+		    if (!term->no_remote_charset && term->utf < 2)
 			term->utf = 0;
+		    break;
+		  case ANSI('G', ANSI('%', '/')):
+		  case ANSI('H', ANSI('%', '/')):
+		  case ANSI('I', ANSI('%', '/')):
+		    if (!term->no_remote_charset && term->utf < 2)
+			term->utf = 3;
 		    break;
 		}
 		break;
@@ -4784,6 +4790,31 @@ static void term_out(Terminal *term)
 			compatibility(SCOANSI);
 			term->use_bce = (term->esc_args[0] <= 0);
 			set_erase_char(term);
+			break;
+		      case ANSI('D', ' '): /* FNT - Select "Font" */
+			compatibility(OTHER);
+			if(term->no_remote_charset) break;
+			if(term->esc_nargs == 2 && term->esc_args[0] == 0) {
+			    /* Allow changing of only the "primary" font
+			     * using the normal registory of codepage numbers.
+			     *
+			     * However, UTF-8 has many codepage values.
+			     * 65001 at Microsoft
+			     * 1208,1400..1448 at IBM
+			     * 4110 at SAP
+			     *
+			     * WARNING: All entries here should be at least
+			     * three digits to prevent random invocation.
+			     */
+			    if(term->esc_args[1] == 2022)
+				term->utf = 0;	/* Line codepage */
+			    else if(term->esc_args[1] == 65001)
+				term->utf = 1;	/* UTF-8 normal style */
+			    else if(term->esc_args[1] == 4110)
+				term->utf = 2;	/* UTF-8 and Linepage Mixed. */
+			    else if(term->esc_args[1] == 1400)
+				term->utf = 3;	/* UTF-8 ONLY, no DOCS return. */
+			}
 			break;
 		      case ANSI('Z', ' '): /* PEC - PRESENTATION EXPAND OR CONTRACT */
 			compatibility(ANSI);
