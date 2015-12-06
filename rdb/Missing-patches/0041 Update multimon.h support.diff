@@ -1,0 +1,27 @@
+3b0b5f9f6194069ca40d33b07be9ed349f790d94
+diff --git a/windows/window.c b/windows/window.c
+index 44f92901ece63dcf944a4483327ae20e33342df1..9f50846c3e60ad10864f3182bf6adb8292b6cc61 100644
+--- a/windows/window.c
++++ b/windows/window.c
+@@ -10,10 +10,6 @@
+ #include <limits.h>
+ #include <assert.h>
+ 
+-#ifndef NO_MULTIMON
+-#define COMPILE_MULTIMON_STUBS
+-#endif
+-
+ #define PUTTY_DO_GLOBALS	       /* actually _define_ globals */
+ #include "putty.h"
+ #include "terminal.h"
+@@ -21,7 +17,9 @@
+ #include "win_res.h"
+ #include "winsecur.h"
+ 
+-#ifndef NO_MULTIMON
++#if !defined(NO_MULTIMON) && !defined(NO_MULTIMON_H)
++/* This is needed to provide the stubs for running on Windows 95 */
++#define COMPILE_MULTIMON_STUBS
+ #include <multimon.h>
+ #endif
+ 

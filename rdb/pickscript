@@ -1,0 +1,159 @@
+set -e
+P=`pwd`
+
+TMP=/tmp/picker
+G="$TMP.git"
+S="$TMP.safe"
+rm -rf "$G" ||:
+rm -rf "$S" ||:
+
+mkdir "$G" "$S"
+
+cd "$G"
+git init
+git fetch "$P" origin/master:temp
+
+next_commit() {
+    git checkout $1
+    cp -a * "$S"/.
+
+    git checkout picker
+
+    rm -rf *
+    mv "$S"/* .
+    git add -A
+    git commit -a --allow-empty -m "Hashes $PREV..$1"
+
+    PREV="$1"
+}
+
+PREV=49ff9f4
+git checkout -f -B picker $PREV
+
+next_commit 976e778
+next_commit 7658b29
+next_commit ad994ba
+next_commit 1840103
+next_commit 097d5ff
+next_commit dc253b3
+next_commit 0afc496
+next_commit 1e0e962
+next_commit bb68baf
+next_commit 11eb75a
+next_commit e88b8d2
+next_commit 7524da6
+next_commit 0de1ac9
+next_commit a50da0e
+next_commit b62af0f
+next_commit 6744387
+next_commit 30e63c1
+next_commit fd7687a
+next_commit 82824e1
+next_commit b08895f
+next_commit 43be90e
+next_commit 5f6e443
+next_commit bea758a
+next_commit 342f287
+next_commit 13edf90
+next_commit 5c5ca11
+next_commit e162810
+next_commit 64ec5e0
+next_commit 06cf210
+next_commit 2496760
+next_commit 5a9711a
+next_commit e0252a4
+next_commit 1489299
+next_commit 7c2ea22
+next_commit 5133d2a
+next_commit 5bb3334
+next_commit 0f759e4
+next_commit 4df5d56
+next_commit 431f8db
+next_commit 854fae8
+next_commit 3c7557d
+next_commit 777f38e
+next_commit 9458377
+next_commit 81152e5
+next_commit 9a3b743
+next_commit 46b7cb6
+next_commit 291cbfc
+next_commit 612534a
+next_commit 10d3b73
+next_commit 1bdeff7
+next_commit acff0a6
+next_commit 675a5ba
+next_commit df006f3
+next_commit c01dff3
+next_commit 9f9d72e
+next_commit 9dd9860
+next_commit 48eafd6
+next_commit 758ac4c
+next_commit 323c3c7
+next_commit 557a99e
+next_commit 1f7f422
+next_commit 3dfb9ac
+next_commit d4e5b0d
+next_commit d61c6ca
+next_commit f594450
+next_commit 417421c
+next_commit 0eb3bf0
+next_commit 1446476
+next_commit eb319f9
+next_commit a063e52
+next_commit 43865aa
+next_commit aaeaae0
+next_commit 6c04165
+next_commit 4252cdb
+next_commit 8c803e7
+next_commit a815c3a
+next_commit 31c5784
+next_commit fbea11f
+next_commit 5c76a93
+next_commit 9c8a3cb
+next_commit 3a43bec
+next_commit e170041
+next_commit c445c74
+next_commit f7365a2
+next_commit 6056396
+next_commit 5936c55
+next_commit 72b659c
+next_commit 98c9469
+next_commit 7552ddb
+next_commit 986b8f8
+next_commit 07af4ed
+next_commit 503061e
+next_commit 1a009ab
+next_commit e3fe709
+next_commit f69b371
+next_commit 63b47ed
+next_commit 7707aa2
+next_commit c0e19ca
+next_commit 4f34059
+next_commit 19d1ad3
+next_commit b94a076
+next_commit 0629f1d
+next_commit 5171dcb
+next_commit 7924aa9
+next_commit 389eb4b
+next_commit b9cb75e
+next_commit f6b81af
+next_commit 1d20c1b
+next_commit 5471539
+next_commit af1460d
+next_commit 12702cb
+next_commit 7a5cb28
+next_commit 9022dcd
+next_commit 6627c1c
+next_commit fe16b57
+next_commit f14382c
+next_commit 3552f37
+next_commit f3230c8
+next_commit b003e5c
+next_commit 222c134
+next_commit a454399
+next_commit fa7b23c
+next_commit 5815d6a
+next_commit 5b7833c
+next_commit f08e2de
+next_commit 3e811b3
+next_commit 470337d

@@ -1,0 +1,135 @@
+From 08e7562f8e0f9491cb1bcb1bceeacd92fa5299ae Mon Sep 17 00:00:00 2001
+From: Robert de Bath <rdebath@tvisiontech.co.uk>
+Date: Mon, 25 Jun 2012 22:25:29 +0100
+Subject: [PATCH] Pango font performance update
+
+This change improves the speed of the best case pango font
+processing.  It removes multiple calls to pango_layout_set_text and
+pango_layout_get_pixel_extents that were used to check that every prefix
+string of a given draw_text is actually the correct size.
+
+Instead the function now checks just once before painting the text
+that the size of the whole region is correct. If it's not correct it
+falls back to painting one character at a time immediatly rather than
+optimistically trying lots of substrings; this normally improves the
+draw time of complex screens and proportional fonts too.
+
+If there are compensating layout issues within the string they won't
+cause problems because terminal.c already has code to redraw any row
+of text that was drawn as one operation if it's split.
+---
+ unix/gtkfont.c | 80 +++++++++++++++++++++++++---------------------------------
+ 1 file changed, 35 insertions(+), 45 deletions(-)
+
+diff --git unix/gtkfont.c unix/gtkfont.c
+index 4fc19bf..b92a975 100644
+--- unix/gtkfont.c
++++ unix/gtkfont.c
+@@ -1069,6 +1069,9 @@ static void pangofont_draw_text(GdkDrawable *target, GdkGC *gc, unifont *font,
+     char *utfstring, *utfptr;
+     int utflen;
+     int shadowbold = FALSE;
++    int onechar = FALSE;
++
++    if (is_rtl(string[0])) onechar = TRUE;
+ 
+     if (wide)
+ 	cellwidth *= 2;
+@@ -1099,6 +1102,8 @@ static void pangofont_draw_text(GdkDrawable *target, GdkGC *gc, unifont *font,
+     utfptr = utfstring;
+     while (utflen > 0) {
+ 	int clen, n;
++	clen = utflen;
++	n = len;
+ 
+ 	/*
+ 	 * We want to display every character from this string in
+@@ -1125,55 +1130,40 @@ static void pangofont_draw_text(GdkDrawable *target, GdkGC *gc, unifont *font,
+ 	 */
+ 
+ 	/*
+-	 * Start by extracting a single UTF-8 character from the
+-	 * string.
++	 * First a check, is the string the right length?
++	 * If it's a good size it's probably got a good look too
++	 * and the processing in terminal.h to redraw partially
++	 * overwritten runs makes sure nothing goes too wrong.
++	 *
++	 * But if it's not the right size (even if it's just smaller)
++	 * it's likely that things won't line up between lines.
++	 *
++	 * Note the pango calls are rather slow so we don't really want
++	 * to dynamically check every possible substring.
+ 	 */
+-	clen = 1;
+-	while (clen < utflen &&
+-	       (unsigned char)utfptr[clen] >= 0x80 &&
+-	       (unsigned char)utfptr[clen] < 0xC0)
+-	    clen++;
+-	n = 1;
+ 
+-        /*
+-         * If it's a right-to-left character, we must display it on
+-         * its own, to stop Pango helpfully re-reversing our already
+-         * reversed text.
+-         */
+-        if (!is_rtl(string[0])) {
++	if (!onechar) {
++	    pango_layout_set_text(layout, utfptr, clen);
++	    pango_layout_get_pixel_extents(layout, NULL, &rect);
++	    if (rect.width != n * cellwidth && n != 1)
++		onechar = TRUE;
++	}
+ 
+-            /*
+-             * See if that character has the width we expect.
+-             */
+-            pango_layout_set_text(layout, utfptr, clen);
+-            pango_layout_get_pixel_extents(layout, NULL, &rect);
+-
+-            if (rect.width == cellwidth) {
+-                /*
+-                 * Try extracting more characters, for as long as they
+-                 * stay well-behaved.
+-                 */
+-                while (clen < utflen) {
+-                    int oldclen = clen;
+-                    clen++;		       /* skip UTF-8 introducer byte */
+-                    while (clen < utflen &&
+-                           (unsigned char)utfptr[clen] >= 0x80 &&
+-                           (unsigned char)utfptr[clen] < 0xC0)
+-                        clen++;
+-                    n++;
+-                    pango_layout_set_text(layout, utfptr, clen);
+-                    pango_layout_get_pixel_extents(layout, NULL, &rect);
+-                    if (rect.width != n * cellwidth) {
+-                        clen = oldclen;
+-                        n--;
+-                        break;
+-                    }
+-                }
+-            }
+-        }
++	if (onechar) {
++	    /*
++	     * Must extract a single UTF-8 character from the string.
++	     */
++	    clen = 1;
++	    while (clen < utflen &&
++		   (unsigned char)utfptr[clen] >= 0x80 &&
++		   (unsigned char)utfptr[clen] < 0xC0)
++		clen++;
++	    n = 1;
++
++	    pango_layout_set_text(layout, utfptr, clen);
++	    pango_layout_get_pixel_extents(layout, NULL, &rect);
++	}
+ 
+-	pango_layout_set_text(layout, utfptr, clen);
+-	pango_layout_get_pixel_extents(layout, NULL, &rect);
+ 	gdk_draw_layout(target, gc, x + (n*cellwidth - rect.width)/2,
+ 			y + (pfont->u.height - rect.height)/2, layout);
+ 	if (shadowbold)
+-- 
+2.1.4
+

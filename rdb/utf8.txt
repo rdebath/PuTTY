@@ -1,0 +1,147 @@
+
+    ISO 10646:
+
+    Code extension control functions for the I SO/IEC 2022 code extension
+    techniques (such as des ignation escape sequences, single shift,
+    and locking shift) shall not be used with this coded character set.
+
+
+    12.2 Identification of a UCS encoding scheme
+
+    When the escape sequences from ISO/IEC 2022 are used, the
+    identification of a UCS encoding scheme (see Clause 9) specified
+    by this International Standard shall be by a designation sequence
+    chosen from the following list:
+
+    ESC 02/05 02/15 04/09
+	 UTF-8 encoding form; UTF-8 encoding scheme
+    ESC 02/05 02/15 04/12
+	 UTF-16 encoding form; UTF-16BE encoding scheme
+    ESC 02/05 02/15 04/06
+	 UTF-32 encoding form; UTF-32BE encoding scheme
+
+	  NOTE - The following designation sequences: ESC 02/05 02/15
+	  04/00, ESC 02/05 02/15 04/01, ESC 02/05 02/15 04/03, ESC
+	  02/05 02/15 04/04, ESC 02/05 02/15 04/07, ESC 02/05 02/15
+	  04/08, ESC 02/05 02/15 04/10, ESC 02/05 02/15 04/11 used in
+	  previous versions of this standard to identify implementation
+	  levels 1 and 2 are deprec ated. The remaining designation se-
+	  quences correspond to the former level 3 which is now the only
+	  supported content definition for code unit sequences.
+
+    ESC 02/05 04/07
+	 UTF-8 encoding form; UTF-8 encoding scheme
+
+    If such an esc ape sequence appears within a code unit sequence
+    conforming to ISO/I EC 2022, it s hall consist only of the sequences
+    of bit combinations as shown above.  If such an escape sequence
+    appears within a code unit sequence conforming to this International
+    Stand- ard, it shall be padded in accordance with Clause 11 when the
+    identified encoding form is either UTF-16 or UTF-32. No padding is
+    necessary when the identified encoding form is UTF-8. See also 12.5.
+
+
+
+UTF-8 processing update
+
+*) Removed the locking of terminal in UTF-8 mode.
+*) The alt_utf flag is removed
+*) The saved_utf flag is removed.
+
+    DOCS standard return always works when no_remote_charset is off.
+
+    The automatic locking of the utf flag for UTF-8 fonts is confusing
+    in that it means there are two distinct versions of PuTTY control
+    sequences (with or without ISO-2022) without an obvious configuration
+    warning. In addition for current versions of PuTTY the functionality
+    is provided by the option to disable remote control of character sets.
+
+    The utf flag is not controlled by most host software, only specialist
+    software (and scripts) that understand ISO-2022 and UTF-8 will use
+    it. Therefor the existance of multi copies of the flag (alt & saved)
+    is not useful and has caused confusion.
+
+*) All ISO-2022 controls (except ESC % @) are properly ignored in utf-8 mode.
+
+    When the 'DOCS return' sequence is used the ISO-2022 engine must
+    be returned to exactly the state it was in when the original 'DOCS'
+    was received. (ECMA-035)
+
+*) Under Debian/Ubuntu my locale is en_GB.utf8, not *UTF-8*.
+*) Some UTF-8 locales don't have a utf8 suffix eg: en_AG, en_IN, en_NG
+
+    The locale detection is updated.
+
+*) Added rxvt compatible UTF-8 mode for ISO-2022 and UTF-8 at the same time.
+*) CSI Pn SP D used to allow host switching to rxvt mixed mode.
+
+    The rxvt compatibility (wishlist/utf8-plus-vt100) means that all the
+    ISO-2022 sequences can be made to continue to work while in UTF-8
+    mode. This is only reasonable when you have a hellspawn host that
+    has an unlabeled mixture of unicode and non-unicode applications and
+    data but it can still be useful.  (eg: if parts of your filesystem
+    have been around for nearly 20 years like mine) Even then there
+    are reasonable arguments that this should be done by translation
+    applications not an emulator. For my usage this is a 'normally off'
+    option that can be turned on to 'get the ****ing thing working'.
+
+    The pure UTF-8 mode is still the default. Note: As the escape sequence
+    to get into the mixed mode is NOT an ISO-2022 sequence the rules
+    about DOCS restoring the ISO-2022 state do not apply.
+
+    This mixed mode also means that the UTF-8 decoder had to be changed;
+    instead of mostly using an FSM with a single character lookahead
+    buffer the UTF-8 decoder has been changed to use only a lookahead
+    buffer.
+
+    This buffer is also used instead of the tiny FSM for the printer
+    output and is likely to be a good solution for any other emulation
+    extensions including full ISO-2022, the Windows MBCS encodings,
+    the Japanese style auto-detection of character encoding and even
+    full emulation replacements like a hardline VT220 or Wyse.
+
+*) Add a config switch to control the new UTF-8 modes on reset.
+
+    Option sets the value of the term->utf field on reset.
+
+    The configuration values are
+	0 => off
+	Terminal uses the configured codepage after a reset.
+	1 => on
+	Terminal uses UTF-8 after a reset, DOCS RETURN is used to get to
+	the configured codepage.
+	2 => mixed
+	Terminal uses UTF-8 after a reset. But if the character sequence
+	isn't legal UTF-8 it will be treated as the configured codepage.
+
+    Rather than overriding the line character set, the UTF8 locale
+    override forces this flag to UTF-8. This means that the 8bit codepage
+    is still available if the host explicitly requests it (ISO8859-1 if
+    the line codepage is UTF-8)
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+Trigger for UTF-8 change ...
+
+The UTF-8 functionality of most host software is controlled through
+the 'locale' functions. These have no built in facilities for sending
+initilisation sequences to a terminal to change it's mode. However,
+a host script can change the locale and so should be able to change the
+terminal to match.
+
+    if [ "`locale charmap 2>/dev/null`" = "UTF-8" ]
+    then echo -ne '\033%G'		# DOCS UTF-8
+    else echo -ne '\033%@'		# DOCS RETURN
+    fi
+
+Most utf-8 software expects normal sequences to have no effect on a
+UTF-8 terminal, ncurses for example may still send smacs strings even
+when using UTF-8 line drawing characters.
+
+It might be reasonable to do this in curses, but no version of curses
+understands ISO-2022. Some, however, do understand UTF-8, in a very
+limited fashion.  Plus the Japaneese style implementations of ISO-2022
+are both more complete and more limited; giving more character sets but
+limiting their usage to overcome problems not forseen by the standard.
+
+For the future it's likely that the terminal will run mostly in UTF-8
+so this mode will become even less useful.

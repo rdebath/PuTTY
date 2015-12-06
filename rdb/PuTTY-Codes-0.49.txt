@@ -1,0 +1,187 @@
+Control Characters
+------------------
+
+Note:   Control characters not mentioned below are normally ignored.
+
+^E              ENQ: terminal type query (Transmits "PuTTY")
+^G              BEL: Sound a bell or visible bell.
+^H              BS: Back space (will reverse wrap if in wraping mode)
+^N              LS1: Locking-shift one: Make G1 current character set.
+^O              LS0: Locking-shift zero: Make G0 current character set.
+^[              ESC: Escape, if vt52 mode --> VT52_ESC
+                             else --> SEEN_ESC
+^M              CR: Carriage return
+^L              FF: Form feed       == ^J
+^K              VT: Line tabulation == ^J
+^J              LF: Line feed (will CR too if mode set)
+^I              HT: Character tabulation
+
+C1 Control characters
+---------------------
+Only CSI and OSC are interpreted.
+
+SEEN_ESC
+--------
+
+ESC \           ST: String terminator ignored here.
+ESC [           CSI: Prefix --> SEEN_CSI
+ESC ]           OSC: Prefix --> SEEN_OSC
+ESC 7           DECSC: save cursor
+ESC 8           DECRC: restore cursor
+ESC =           DECKPAM: Keypad application mode
+ESC >           DECKPNM: Keypad numeric mode
+ESC D           IND: exactly equivalent to LF
+ESC E           NEL: exactly equivalent to CR-LF
+ESC M           RI: reverse index - backwards LF
+ESC Z           DECID: terminal type query  (Transmits "id_string")
+ESC c           RIS: restore power-on settings
+ESC H           HTS: set a tab
+ESC # 8         DECALN: Dec Alignment check.  Fills screen with Es :-)
+
+ESC ( A         G0 designate 94-set -- UK ASCII
+ESC ( B         G0 designate 94-set -- US ASCII
+ESC ( 0         G0 designate 94-set -- Line drawing
+ESC ) A         G1 designate 94-set -- UK ASCII
+ESC ) B         G1 designate 94-set -- US ASCII
+ESC ) 0         G1 designate 94-set -- Line drawing
+
+SEEN_OSC
+--------
+OSC P           Linux palette setting --> SEEN_OSC_P
+OSC R           Reset Linux palette (doesn't require ST)
+OSC W           --> SEEN_OSC_W
+OSC 0-9         Add argument for OSC string.
+OSC 2 L         DECterm title string. Like OSC 1
+OSC <anything>  XTerm title string. (CR,LF will cancel; ^G or
+                ST will set)
+
+Note:           All OSC sequences should be terminated with an ST.
+                OSC P and OSC R don't have to be but should be for
+                compatibility with strict ANSI parsers.
+
+SEEN_OSC_P
+----------
+OSC P Pc Pr Pg Pb ESC \
+                Sets palette entry Pc is base36 colour number.
+                Pr Pg and Pb are two digit hex colour intensity
+                values for red, green and blue. The base36
+                digits are case insensitive.
+
+SEEN_OSC_W
+----------
+OCS W ...       Wordness    ------> See code!!
+
+
+SEEN_CSI
+--------
+Once a CSI prefix is seen a string of (up to 32) arguments are
+collected as semicolon separated decimal numbers. A single
+intermediate character (less than '@') may be included at
+any point; the first character of '@' or above is the final
+character of the sequence. No defined sequence has more than one
+intermediate character. If an argument is omitted it's assumed
+to be zero; many controls will treat zero the same as one.
+
+CSI A           CUU: move up N lines
+CSI e           VPR: move down N lines (as CUD)
+CSI B           CUD: Cursor down
+CSI a           HPR: move right N cols (as CUF)
+CSI C           CUF: Cursor right
+CSI D           CUB: move left N cols
+CSI E           CNL: move down N lines and CR
+CSI F           CPL: move up N lines and CR
+CSI G           CHA as HPA
+CSI `           HPA: set horizontal posn
+CSI d           VPA: set vertical posn
+CSI f           HVP as CUP
+CSI H           CUP: set horz and vert posns at once
+CSI J           ED: erase screen or parts of it
+CSI K           EL: erase line or parts of it
+CSI L           IL: insert lines
+CSI M           DL: delete lines
+CSI @           ICH: insert chars
+CSI P           DCH: delete chars
+CSI c           DA: terminal type query (Transmits "\033[?6c")
+CSI 5 n         Terminal okay query, replies with ESC 0n
+CSI 6 n         DSR: cursor position query
+CSI h           SM: toggle modes to high (See modes below)
+CSI ? h         SM: toggle modes to high (See modes below)
+CSI l           RM: toggle modes to low (See modes below)
+CSI ? l         RM: toggle modes to low (See modes below)
+CSI 0 g         TBC: clear this tab
+CSI 3 g         TBC: clear all tabs
+CSI r           DECSTBM: set scroll margins
+CSI m           SGR: set graphics rendition  (See below)
+CSI s           ANSI save cursor
+CSI u           ANSI restore cursor
+CSI t           DECSLPP: set page size
+CSI * |         DECSNLS: VT420 lines on screen
+CSI $ |         DECSCPP: VT420 columns on screen
+CSI X           ECH: write N spaces w/o moving cursor
+CSI x           DECREQTPARM: report terminal characteristics
+                            (Transmits "ESC [2;1;1;112;112;1;0x"
+
+CSI = L         SCO: arg = 0  background color erase is on. arg =
+                1 turn it off.
+
+CSI " p         DECSCL: set compat level
+CSI 60 " p      Set ANSI mode
+CSI 61 " p      DECSCL: Disable most VT220 and above controls.
+CSI 62 " p      DECSCL: Return to default mode (PuTTY)
+
+SGR: set graphics rendition  CSI m
+----------------------------------
+The arguments to CSI m are (mostly) independent the effect is
+identical if the arguments are each placed individually into a
+CSI m or joind together in a single list.
+
+CSI 0 m         restore defaults
+CSI 1 m         enable bold
+CSI 4 m         enable underline
+CSI 5 m         enable bright background
+CSI 7 m         enable reverse video
+CSI 21 m        As CSI 4 m
+CSI 22 m        disable bold
+CSI 24 m        disable underline
+CSI 25 m        disable bright background
+CSI 27 m        disable reverse video
+
+CSI 39 m        default-foreground
+CSI 49 m        default-background
+
+CSI 30 m to CSI 37 m    Set foreground colour
+CSI 40 m to CSI 47 m    Set background colour
+
+Modes
+-----
+CSI 4 h/l       IRM: set insert mode
+CSI 12 h/l      SRM: set echo mode
+
+CSI ? 1 h/l     DECCKM: application cursor keys
+CSI ? 2 l       DECANM: VT52 mode
+CSI ? 3 h/l     DECCOLM: 80/132 columns
+CSI ? 5 h/l     DECSCNM: reverse video
+CSI ? 6 h/l     DECOM: DEC origin mode
+CSI ? 7 h/l     DECAWM: auto wrap
+CSI ? 25 h/l    DECTCEM: enable/disable cursor
+CSI ? 47 h/l    alternate screen
+
+VT52_ESC
+--------
+ESC A           Cursor up
+ESC B           Cursor down
+ESC C           Cursor right
+ESC D           Cursor left
+ESC F           Select line drawing character set in GL = G0
+ESC G           Select US Ascii character set in GL = G0
+ESC H           Home cursor
+ESC I           Reverse scroll screen
+ESC J           Clear to end of screen
+ESC K           Clear to end of line
+ESC Y Pr Pc     More to Row/Col Pr & Pc are single byte value
+                space is top left.
+ESC Z           DECID: terminal type query  (Transmits "\033/Z")
+ESC =           DECKPAM: Keypad application mode
+ESC >           DECKPNM: Keypad numeric mode
+ESC <           Return to VT100 emulation
+

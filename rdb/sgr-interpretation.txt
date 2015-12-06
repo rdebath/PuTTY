@@ -1,0 +1,213 @@
+8.3.117 SGR - SELECT GRAPHIC RENDITION
+        Notation: (Ps...)
+        Representation: CSI Ps... 06/13
+        Parameter default value: Ps = 0
+
+        SGR is used to establish one or more graphic rendition aspects for
+        subsequent text. The established aspects remain in effect until
+        the next occurrence of SGR in the data stream, depending on the
+        setting of the GRAPHIC RENDITION COMBINATION MODE (GRCM). Each
+        graphic rendition aspect is specified by a parameter value:
+
+	--> GRCM is never used, SGR sequences are assumed to be additive.
+
+        0  default rendition (implementation-defined), cancels the effect
+	   of any preceding occurrence of SGR in the data stream
+	   regardless of the setting of the GRAPHIC RENDITION COMBINATION
+	   MODE (GRCM)
+
+	    --> Note: This includes SGR 11 !
+
+	1  bold or increased intensity
+	    --> see 22
+	2  faint, decreased intensity or second colour
+	    --> see 22
+	    --> The 'second colour' part probably refers to the ability to
+		place two colours of ink onto one typewriter ribbon. This
+		would give you the ability to type normally in black but
+		show certain numbers in red (for example).
+
+	3  italicized
+	    --> see 23
+	4  singly underlined
+	    --> see 24
+
+	5  slowly blinking (less then 150 per minute)
+	    --> see 25
+	6  rapidly blinking (150 per minute or more)
+	    --> see 25
+
+	7  negative image
+	    --> Negate the polarity of the signal from the character
+		generator ROM so that pixels marked as foreground are
+		displayed as background a vs. versa.
+
+		Note this is not supposed to set a colour pair, but it
+		is often implemented in this way.
+
+	8  concealed characters
+	    --> This is a wyse50 feature (and earlier terminals).
+		The wyse50 used a (blank looking) character cell to set the
+		attributes for following characters on the line.
+		It was possible to overwrite this character cell and change
+		the attributes for all the characters following instantly
+		even on a terminal connected at 300 baud (or 30 characters
+		per second)
+
+	    --> A current interpretation of this feature might be to allow
+		selection using the mouse to reveal the text.
+
+	9  crossed-out (characters still legible but marked as to be deleted)
+	    --> Impact printers would use backspace (or CR) to go back and
+		overwrite characters with a '/', '-' or similar to show
+		that these characters have been erased. This doesn't match
+		the model for ECMA-48 so an attribute for this pattern was
+		added.
+
+	10 primary (default) font
+	11 first alternative font
+	12 second alternative font
+	13 third alternative font
+	14 fourth alternative font
+	15 fifth alternative font
+	16 sixth alternative font
+	17 seventh alternative font
+	18 eighth alternative font
+	19 ninth alternative font
+	    --> These are mainly for dot-matrix printers that used the
+		versatility of having the characters defined as pixel
+		arrays to present a small, rather random, collection
+		of variants.
+
+	    --> For terminals these are now used exclusivly to specify
+		the use of codepage 437 with minor variations.
+		Note: also due to curses they are often not turned off
+		by SGR0 in direct contradiction to this standard.
+
+	20 Fraktur (Gothic)
+	    --> see 23
+
+	21 doubly underlined
+	    --> Double underline is a print feature so this sequence has
+		been used for many variations on terminal. However, it
+		will often be a duplicate of 22 or a specific reverse
+		of 21.	(In terminals without an SGR(2) it would be
+		unclear which)
+
+	22 normal colour or normal intensity (neither bold nor faint)
+	    --> I note that 1,2 and 22 are a set, so they should be tweaking
+		the same control. On a CRT this will be the brightness
+		knob for the character. Also, for an impact printer this
+		can be double striking or a different ribbon.  But for a
+		pixel printer (eg: laser or a printing press) this will
+		have to be character stroke widths.
+
+	23 not italicized, not fraktur
+	    --> I note 3,20 and 23 are a set. This means that the obscure
+		reference 'fraktur' is something like italic. Italic
+		is not a feature of low resolution CRT displays so this
+		is likely a reference to an alternate print form for a
+		paper printer.	I also note that it is positioned as
+		the tenth alternative font. From this data I surmise
+		that it's likely an interpretation of a "(Near) Letter
+		Quality" or "nice" font from some printer. This is a
+		font that looks better than the default one, but prints
+		much more slowly.  These likely became named a variant on
+		'Helvetica' or just 'Sans-serif' in later devices.
+
+	24 not underlined (neither singly nor doubly)
+	    --> Codes 4,21 and 24 are a set. However, code 21 is
+		probably unusable in general so this code will just be
+		a reverse of '4'.
+
+	25 steady (not blinking)
+	    --> Codes 5,6 and 25 are a set.
+
+	        SCR5 appears to always implement blinking if it's available.
+		BUT: The VGA textmode hardware uses the same bit to
+		implement bright for background colours (if configured)
+		so this code has also become associated with that attribute.
+
+		SGR6 tends to be either unused or the same as SGR5, however,
+		the choice of SGR5 or SGR6 has been used to switch the VGA
+		hardare between display of bright background or blinking for
+		all characters on the screen.
+		
+		Note: 'bright background' is a complement to SGR(1)
+		to bring the colour count to 16 for both FG and BG.
+
+
+	26 (reserved for proportional spacing as specified in CCITT Recommendation T.61)
+	    --> Never used.
+
+	27 positive image
+	    --> Turn off 7.
+	    --> Sigh, negative is a reference to the polaritiy of the video
+		signal being negated or flipped; 'posigated' would be stupid.
+
+	28 revealed characters
+	    --> Turn off 8.
+	    --> This wording seems a little obscure, but the only reasonable
+		interpretation is "not concealed". I expect the committee
+		member just wanted something 'clever' like the previous name.
+
+	29 not crossed out
+	    --> Turn off 9.
+
+	30 black display
+	31 red display
+	32 green display
+	33 yellow display
+	34 blue display
+	35 magenta display
+	36 cyan display
+	37 white display
+
+	38  (reserved for future standardization; intended for setting
+	    character foreground colour as specified in ISO 8613-6
+	    [CCITT Recommendation T.416])
+	    --> This one is now very messy.
+
+	39 default display colour (implementation-defined)
+	    --> Exactly the same colour as set by SGR0, note FG and BG would
+		be swapped by SGR7 so this can be displayed as background.
+
+	40 black background
+	41 red background
+	42 green background
+	43 yellow background
+	44 blue background
+	45 magenta background
+	46 cyan background
+	47 white background
+
+	48  (reserved for future standardization; intended for setting
+	    character background colour as specified in ISO 8613-6
+	    [CCITT Recommendation T.416])
+	    --> This one is now very messy.
+
+	49 default background colour (implementation-defined)
+	    --> Exactly the same colour as set by SGR0, note FG and BG would
+		be swapped by SGR7 so this can be displayed as foreground.
+
+--> The following codes have never been implemeted AFAIK, they have been reused though.
+
+	50 (reserved for cancelling the effect of the rendering aspect established by parameter value 26)
+	51 framed
+	52 encircled
+	53 overlined
+	54 not framed, not encircled
+	55 not overlined
+
+	56 (reserved for future standardization)
+	57 (reserved for future standardization)
+	58 (reserved for future standardization)
+	59 (reserved for future standardization)
+
+	60 ideogram underline or right side line
+	61 ideogram double underline or double line on the right side
+	62 ideogram overline or left side line
+	63 ideogram double overline or double line on the left side
+	64 ideogram stress marking
+	65 cancels the effect of the rendition aspects established by parameter values 60 to 64
+
