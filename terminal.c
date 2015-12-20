@@ -673,12 +673,18 @@ static unsigned char *compressline(termline *ldata)
 {
     struct buf buffer = { NULL, 0, 0 }, *b = &buffer;
 #if !defined(COMBI_COLOUR) && !defined(THIN_TC24)
-    int has_tc = 0;
+    int has_tc = 0, has_cc = 0;
     {
 	int i, c = ldata->cols;
 	for(i=0; i<c; i++) {
 	    if (ldata->chars[i].fg_colour || ldata->chars[i].bg_colour) {
 		has_tc = 1;
+		break;
+	    }
+	}
+	for(i=0; i<c; i++) {
+	    if (ldata->chars[i].cc_next) {
+		has_cc = 1;
 		break;
 	    }
 	}
@@ -704,7 +710,7 @@ static unsigned char *compressline(termline *ldata)
      */
     {
 #if !defined(COMBI_COLOUR) && !defined(THIN_TC24)
-	int n = ldata->lattr | (has_tc?LATTR_HASTC:0);
+	int n = ldata->lattr | (has_tc?LATTR_HASTC:0) | (has_cc?LATTR_HASCC:0);
 #else
 	int n = ldata->lattr;
 #endif
@@ -730,10 +736,13 @@ static unsigned char *compressline(termline *ldata)
      */
     makerle(b, ldata, makeliteral_chr);
     makerle(b, ldata, makeliteral_attr);
-    makerle(b, ldata, makeliteral_cc);
 #if !defined(COMBI_COLOUR) && !defined(THIN_TC24)
+    if (has_cc)
+	makerle(b, ldata, makeliteral_cc);
     if (has_tc)
 	makerle(b, ldata, makeliteral_t416);
+#else
+    makerle(b, ldata, makeliteral_cc);
 #endif
 
     /*
@@ -985,12 +994,17 @@ static termline *decompressline(unsigned char *data, int *bytes_used)
      */
     readrle(b, ldata, readliteral_chr);
     readrle(b, ldata, readliteral_attr);
-    readrle(b, ldata, readliteral_cc);
 #if !defined(COMBI_COLOUR) && !defined(THIN_TC24)
+    if (ldata->lattr & LATTR_HASCC) {
+	ldata->lattr &= ~LATTR_HASCC;
+	readrle(b, ldata, readliteral_cc);
+    }
     if (ldata->lattr & LATTR_HASTC) {
 	ldata->lattr &= ~LATTR_HASTC;
 	readrle(b, ldata, readliteral_t416);
     }
+#else
+    readrle(b, ldata, readliteral_cc);
 #endif
 
     /* Return the number of bytes read, for diagnostic purposes. */
