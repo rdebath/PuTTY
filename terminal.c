@@ -1323,6 +1323,10 @@ static void power_on(Terminal *term, int clear)
     term->use_bce = conf_get_int(term->conf, CONF_bce);
     term->blink_is_real = conf_get_int(term->conf, CONF_blinktext);
     term->erase_char = term->basic_erase_char;
+    term->bold_attr = (ATTR_DEFAULT|ATTR_BOLD);
+    term->dim_attr = (ATTR_DEFAULT|ATTR_DIM);
+    term->italic_attr = (ATTR_DEFAULT|ATTR_ITALIC);
+    term->under_attr = (ATTR_DEFAULT|ATTR_UNDER);
     term->alt_which = 0;
     term_print_finish(term);
     term->xterm_mouse = 0;
@@ -2864,6 +2868,7 @@ static void term_display_graphic_char(Terminal *term, unsigned long c)
 {
     termline *cline = scrlineptr(term->curs.y);
     int width = 0;
+    unsigned long tattr = term->curr_attr;
 
     /* An ASCII control char can't get to here ... */
     if (c < ' ') return;
@@ -2916,6 +2921,13 @@ static void term_display_graphic_char(Terminal *term, unsigned long c)
          (c & CSET_MASK) == 0) && term->logctx)
         logtraffic(term->logctx, (unsigned char) c, LGTYP_ASCII);
 
+    if (!term->curr_truecolour.fg.enabled && !term->curr_truecolour.bg.enabled) {
+	if (tattr == (ATTR_DEFAULT|ATTR_BOLD)) tattr = term->bold_attr;
+	if (tattr == (ATTR_DEFAULT|ATTR_DIM)) tattr = term->dim_attr;
+	if (tattr == (ATTR_DEFAULT|ATTR_ITALIC)) tattr = term->italic_attr;
+	if (tattr == (ATTR_DEFAULT|ATTR_UNDER)) tattr = term->under_attr;
+    }
+
     switch (width) {
       case 2:
         /*
@@ -2953,7 +2965,7 @@ static void term_display_graphic_char(Terminal *term, unsigned long c)
         /* FULL-TERMCHAR */
         clear_cc(cline, term->curs.x);
         cline->chars[term->curs.x].chr = c;
-        cline->chars[term->curs.x].attr = term->curr_attr;
+        cline->chars[term->curs.x].attr = tattr;
         cline->chars[term->curs.x].truecolour =
             term->curr_truecolour;
 
@@ -2962,7 +2974,7 @@ static void term_display_graphic_char(Terminal *term, unsigned long c)
         /* FULL-TERMCHAR */
         clear_cc(cline, term->curs.x);
         cline->chars[term->curs.x].chr = UCSWIDE;
-        cline->chars[term->curs.x].attr = term->curr_attr;
+        cline->chars[term->curs.x].attr = tattr;
         cline->chars[term->curs.x].truecolour =
             term->curr_truecolour;
 
@@ -2974,7 +2986,7 @@ static void term_display_graphic_char(Terminal *term, unsigned long c)
         /* FULL-TERMCHAR */
         clear_cc(cline, term->curs.x);
         cline->chars[term->curs.x].chr = c;
-        cline->chars[term->curs.x].attr = term->curr_attr;
+        cline->chars[term->curs.x].attr = tattr;
         cline->chars[term->curs.x].truecolour =
             term->curr_truecolour;
 
@@ -4727,6 +4739,34 @@ static void term_out(Terminal *term)
 			compatibility(ANSI);
 			term->width_override = term->esc_args[0];
 			break;
+
+		      case ANSI('a', ANSI('=', '+')):
+			{
+			    int attr = ATTR_DEFAULT;
+			    if (term->esc_nargs > 1) {
+				attr &= ~ATTR_FGMASK;
+				attr |= ((term->esc_args[1] & 255) << ATTR_FGSHIFT);
+			    }
+			    if (term->esc_nargs > 2) {
+				attr &= ~ATTR_BGMASK;
+				attr |= ((term->esc_args[2] & 255) << ATTR_BGSHIFT);
+			    }
+			    switch(term->esc_args[0])
+			    {
+			    case 0:
+				term->bold_attr = (ATTR_DEFAULT|ATTR_BOLD);
+				term->dim_attr = (ATTR_DEFAULT|ATTR_DIM);
+				term->italic_attr = (ATTR_DEFAULT|ATTR_ITALIC);
+				term->under_attr = (ATTR_DEFAULT|ATTR_UNDER);
+				break;
+			    case 1: term->bold_attr = attr; break;
+			    case 2: term->dim_attr = attr; break;
+			    case 3: term->italic_attr = attr; break;
+			    case 4: term->under_attr = attr; break;
+			    }
+			}
+			break;
+
 		      case ANSI('p', '"'): /* DECSCL: set compat level */
 		      case ANSI('p', ANSI('!', '"')): /* VT52 disable */
 			/*

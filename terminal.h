@@ -106,6 +106,8 @@ struct terminal_tag {
     truecolour curr_truecolour, save_truecolour;
     termchar basic_erase_char, erase_char;
 
+    int bold_attr, dim_attr, italic_attr, under_attr;
+
     bufchain inbuf;		       /* terminal input buffer */
     pos curs;			       /* cursor */
     pos savecurs;		       /* saved cursor position */
