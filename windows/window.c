@@ -3395,7 +3395,7 @@ static void sys_cursor_update(void)
  * We are allowed to fiddle with the contents of `text'.
  */
 void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
-		      unsigned long attr, int lattr)
+		      unsigned long attr, int lattr, int fg_col, int bg_col)
 {
     COLORREF fg, bg, t;
     int nfg, nbg, nfont;
@@ -3433,6 +3433,7 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
 	/* cursor fg and bg */
 	attr |= (260 << ATTR_FGSHIFT) | (261 << ATTR_BGSHIFT);
         is_cursor = TRUE;
+	fg_col = bg_col = 0;
     }
 
     nfont = 0;
@@ -3494,6 +3495,9 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
 
     nfg = ((attr & ATTR_FGMASK) >> ATTR_FGSHIFT);
     nbg = ((attr & ATTR_BGMASK) >> ATTR_BGSHIFT);
+    if (fg_col) nfg = fg_col;
+    if (bg_col) nbg = bg_col;
+
     if (bold_font_mode == BOLD_FONT && (attr & ATTR_BOLD))
 	nfont |= FONT_BOLD;
     if (und_mode == UND_FONT && (attr & ATTR_UNDER))
@@ -3516,14 +3520,24 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
     }
     if (bold_colours && (attr & ATTR_BOLD) && !is_cursor) {
 	if (nfg < 16) nfg |= 8;
-	else if (nfg >= 256) nfg |= 1;
+	else if (nfg >= 256 && nfg < NALLCOLOURS) nfg |= 1;
     }
     if (bold_colours && (attr & ATTR_BLINK)) {
 	if (nbg < 16) nbg |= 8;
-	else if (nbg >= 256) nbg |= 1;
+	else if (nbg >= 256 && nbg < NALLCOLOURS) nbg |= 1;
     }
-    fg = colours[nfg];
-    bg = colours[nbg];
+    if (nfg < NALLCOLOURS)
+	fg = colours[nfg];
+    else if (pal)
+	fg = PALETTERGB(((nfg>>16)&0xFF), ((nfg>>8)&0xFF), (nfg&0xFF));
+    else
+	fg = RGB(((nfg>>16)&0xFF), ((nfg>>8)&0xFF), (nfg&0xFF));
+    if (nbg < NALLCOLOURS)
+	bg = colours[nbg];
+    else if (pal)
+	bg = PALETTERGB(((nbg>>16)&0xFF), ((nbg>>8)&0xFF), (nbg&0xFF));
+    else
+	bg = RGB(((nbg>>16)&0xFF), ((nbg>>8)&0xFF), (nbg&0xFF));
     SelectObject(hdc, fonts[nfont]);
     SetTextColor(hdc, fg);
     SetBkColor(hdc, bg);
@@ -3768,7 +3782,7 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
  * Wrapper that handles combining characters.
  */
 void do_text(Context ctx, int x, int y, wchar_t *text, int len,
-	     unsigned long attr, int lattr)
+	     unsigned long attr, int lattr, int fg_col, int bg_col)
 {
     if (attr & TATTR_COMBINING) {
 	unsigned long a = 0;
@@ -3778,13 +3792,13 @@ void do_text(Context ctx, int x, int y, wchar_t *text, int len,
 	    len0 = 2;
 	if (len-len0 >= 1 && IS_LOW_VARSEL(text[len0])) {
 	    attr &= ~TATTR_COMBINING;
-	    do_text_internal(ctx, x, y, text, len0+1, attr, lattr);
+	    do_text_internal(ctx, x, y, text, len0+1, attr, lattr, fg_col, bg_col);
 	    text += len0+1;
 	    len -= len0+1;
 	    a = TATTR_COMBINING;
 	} else if (len-len0 >= 2 && IS_HIGH_VARSEL(text[len0], text[len0+1])) {
 	    attr &= ~TATTR_COMBINING;
-	    do_text_internal(ctx, x, y, text, len0+2, attr, lattr);
+	    do_text_internal(ctx, x, y, text, len0+2, attr, lattr, fg_col, bg_col);
 	    text += len0+2;
 	    len -= len0+2;
 	    a = TATTR_COMBINING;
@@ -3794,22 +3808,22 @@ void do_text(Context ctx, int x, int y, wchar_t *text, int len,
 
 	while (len--) {
 	    if (len >= 1 && IS_SURROGATE_PAIR(text[0], text[1])) {
-		do_text_internal(ctx, x, y, text, 2, attr | a, lattr);
+		do_text_internal(ctx, x, y, text, 2, attr | a, lattr, fg_col, bg_col);
 		len--;
 		text++;
 	    } else {
-                do_text_internal(ctx, x, y, text, 1, attr | a, lattr);
+                do_text_internal(ctx, x, y, text, 1, attr | a, lattr, fg_col, bg_col);
             }
 
 	    text++;
 	    a = TATTR_COMBINING;
 	}
     } else
-	do_text_internal(ctx, x, y, text, len, attr, lattr);
+	do_text_internal(ctx, x, y, text, len, attr, lattr, fg_col, bg_col);
 }
 
 void do_cursor(Context ctx, int x, int y, wchar_t *text, int len,
-	       unsigned long attr, int lattr)
+	       unsigned long attr, int lattr, int fg_col, int bg_col)
 {
 
     int fnt_width;
@@ -3821,7 +3835,7 @@ void do_cursor(Context ctx, int x, int y, wchar_t *text, int len,
 
     if ((attr & TATTR_ACTCURS) && (ctype == 0 || term->big_cursor)) {
 	if (*text != UCSWIDE) {
-	    do_text(ctx, x, y, text, len, attr, lattr);
+	    do_text(ctx, x, y, text, len, attr, lattr, fg_col, bg_col);
 	    return;
 	}
 	ctype = 2;

@@ -9,6 +9,17 @@
 #ifndef PUTTY_TERMINAL_H
 #define PUTTY_TERMINAL_H
 
+#if defined(COMBI_COLOUR) || defined(FAT_COMBI_COLOUR)
+#define FG_COL_CHAR	0x1000000
+#define BG_COL_CHAR	0x3000000
+#ifndef FAT_COMBI_COLOUR
+#define THIN_TC24
+#endif
+#ifndef COMBI_COLOUR
+#define COMBI_COLOUR
+#endif
+#endif
+
 #include "tree234.h"
 
 struct beeptime {
@@ -40,6 +51,9 @@ struct termchar {
      */
     unsigned long chr;
     unsigned long attr;
+#ifndef COMBI_COLOUR
+    int fg_colour, bg_colour;
+#endif
 
     /*
      * The cc_next field is used to link multiple termchars
@@ -102,7 +116,16 @@ struct terminal_tag {
 #endif /* OPTIMISE_SCROLL */
 
     int default_attr, curr_attr, save_attr;
+    int fg_colour, bg_colour;
+    int save_fg_colour, save_bg_colour;
+#ifdef COMBI_COLOUR
+    termchar basic_erase_char, erase_char_list[3];
+#define erase_char erase_char_list[0]
+#else
     termchar basic_erase_char, erase_char;
+#endif
+
+    int bold_attr, dim_attr, italic_attr, under_attr;
 
     bufchain inbuf;		       /* terminal input buffer */
     pos curs;			       /* cursor */
@@ -142,6 +165,7 @@ struct terminal_tag {
     int alt_save_cset, alt_save_csattr;
     int alt_save_utf, alt_save_wnext;
     int alt_save_sco_acs;
+    int alt_save_fg_colour, alt_save_bg_colour;
 
     int rows, cols, savelines;
     int has_focus;

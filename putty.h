@@ -72,6 +72,7 @@ typedef struct terminal_tag Terminal;
 #define LATTR_TOP    0x00000002UL
 #define LATTR_BOT    0x00000003UL
 #define LATTR_MODE   0x00000003UL
+#define LATTR_HASTC  0x00000008UL
 #define LATTR_WRAPPED 0x00000010UL     /* this line wraps to next */
 #define LATTR_WRAPPED2 0x00000020UL    /* with WRAPPED: CJK wide character
 					  wrapped to next line, so last
@@ -596,8 +597,8 @@ void free_prompts(prompts_t *p);
  * Exports from the front end.
  */
 void request_resize(void *frontend, int, int);
-void do_text(Context, int, int, wchar_t *, int, unsigned long, int);
-void do_cursor(Context, int, int, wchar_t *, int, unsigned long, int);
+void do_text(Context, int, int, wchar_t *, int, unsigned long, int, int, int);
+void do_cursor(Context, int, int, wchar_t *, int, unsigned long, int, int, int);
 int char_width(Context ctx, int uc);
 #ifdef OPTIMISE_SCROLL
 void do_scroll(Context, int, int, int);

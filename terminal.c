@@ -112,6 +112,7 @@ static void scroll(Terminal *, int, int, int, int);
 static void scroll_display(Terminal *, int, int, int);
 #endif /* OPTIMISE_SCROLL */
 static void set_truecolour_attr(Terminal *, int, int, int, int);
+static void palette_conv(Terminal *, int fg, unsigned colnum);
 
 static termline *newline(Terminal *term, int cols, int bce)
 {
@@ -281,13 +282,18 @@ static void clear_cc(termline *line, int col)
  * fields to be.
  */
 static int termchars_equal_override(termchar *a, termchar *b,
-				    unsigned long bchr, unsigned long battr)
+				    unsigned long bchr, unsigned long battr,
+				    int fg_col, int bg_col)
 {
     /* FULL-TERMCHAR */
     if (a->chr != bchr)
 	return FALSE;
     if ((a->attr &~ DATTR_MASK) != (battr &~ DATTR_MASK))
 	return FALSE;
+#ifndef COMBI_COLOUR
+    if (a->fg_colour != fg_col || a->bg_colour != bg_col)
+	return FALSE;
+#endif
     while (a->cc_next || b->cc_next) {
 	if (!a->cc_next || !b->cc_next)
 	    return FALSE;	       /* one cc-list ends, other does not */
@@ -301,7 +307,12 @@ static int termchars_equal_override(termchar *a, termchar *b,
 
 static int termchars_equal(termchar *a, termchar *b)
 {
-    return termchars_equal_override(a, b, b->chr, b->attr);
+#ifndef COMBI_COLOUR
+    return termchars_equal_override(a, b, b->chr, b->attr,
+		b->fg_colour, b->bg_colour);
+#else
+    return termchars_equal_override(a, b, b->chr, b->attr, 0,0);
+#endif
 }
 
 /*
@@ -608,6 +619,22 @@ static void makeliteral_attr(struct buf *b, termchar *c, unsigned long *state)
 	add(b, (unsigned char)(attr & 0xFF));
     }
 }
+#if !defined(COMBI_COLOUR) && !defined(THIN_TC24)
+static void makeliteral_t416(struct buf *b, termchar *c, unsigned long *state)
+{
+    add(b, 2*(c->fg_colour != 0) + (c->bg_colour != 0));
+    if (c->fg_colour) {
+	add(b, (c->fg_colour >> 16) & 0xFF);
+	add(b, (c->fg_colour >>  8) & 0xFF);
+	add(b, (c->fg_colour      ) & 0xFF);
+    }
+    if (c->bg_colour) {
+	add(b, (c->bg_colour >> 16) & 0xFF);
+	add(b, (c->bg_colour >>  8) & 0xFF);
+	add(b, (c->bg_colour      ) & 0xFF);
+    }
+}
+#endif
 static void makeliteral_cc(struct buf *b, termchar *c, unsigned long *state)
 {
     /*
@@ -627,7 +654,12 @@ static void makeliteral_cc(struct buf *b, termchar *c, unsigned long *state)
 	assert(c->chr != 0);
 
 	zstate = 0;
+#if defined(COMBI_COLOUR) && defined(THIN_TC24)
+	if (c->chr < 0x110000)
+	    makeliteral_chr(b, c, &zstate);
+#else
 	makeliteral_chr(b, c, &zstate);
+#endif
     }
 
     z.chr = 0;
@@ -640,6 +672,18 @@ static termline *decompressline(unsigned char *data, int *bytes_used);
 static unsigned char *compressline(termline *ldata)
 {
     struct buf buffer = { NULL, 0, 0 }, *b = &buffer;
+#if !defined(COMBI_COLOUR) && !defined(THIN_TC24)
+    int has_tc = 0;
+    {
+	int i, c = ldata->cols;
+	for(i=0; i<c; i++) {
+	    if (ldata->chars[i].fg_colour || ldata->chars[i].bg_colour) {
+		has_tc = 1;
+		break;
+	    }
+	}
+    }
+#endif
 
     /*
      * First, store the column count, 7 bits at a time, least
@@ -659,7 +703,11 @@ static unsigned char *compressline(termline *ldata)
      * Next store the lattrs; same principle.
      */
     {
+#if !defined(COMBI_COLOUR) && !defined(THIN_TC24)
+	int n = ldata->lattr | (has_tc?LATTR_HASTC:0);
+#else
 	int n = ldata->lattr;
+#endif
 	while (n >= 128) {
 	    add(b, (unsigned char)((n & 0x7F) | 0x80));
 	    n >>= 7;
@@ -683,6 +731,10 @@ static unsigned char *compressline(termline *ldata)
     makerle(b, ldata, makeliteral_chr);
     makerle(b, ldata, makeliteral_attr);
     makerle(b, ldata, makeliteral_cc);
+#if !defined(COMBI_COLOUR) && !defined(THIN_TC24)
+    if (has_tc)
+	makerle(b, ldata, makeliteral_t416);
+#endif
 
     /*
      * Diagnostics: ensure that the compressed data really does
@@ -698,10 +750,15 @@ static unsigned char *compressline(termline *ldata)
 	int i;
 
 #ifdef DIAGNOSTIC_SB_COMPRESSION
+	printf("Bytes:");
 	for (i = 0; i < b->len; i++) {
-	    printf(" %02x ", b->data[i]);
+	    printf(" %02x", b->data[i]);
 	}
 	printf("\n");
+#endif
+
+#if defined(THIN_TC24)
+#error THIN_TC24 will fail CHECK_SB_COMPRESSION
 #endif
 
 	dcl = decompressline(b->data, &dused);
@@ -712,9 +769,9 @@ static unsigned char *compressline(termline *ldata)
 	    assert(termchars_equal(&ldata->chars[i], &dcl->chars[i]));
 
 #ifdef DIAGNOSTIC_SB_COMPRESSION
-	printf("%d cols (%d bytes) -> %d bytes (factor of %g)\n",
-	       ldata->cols, 4 * ldata->cols, dused,
-	       (double)dused / (4 * ldata->cols));
+	printf("%d cols (%d bytes) -> %d bytes (%g bytes/cell)\n",
+	       ldata->cols, sizeof(termchar) * ldata->cols, dused,
+	       (double)dused / ldata->cols);
 #endif
 
 	freeline(dcl);
@@ -827,6 +884,29 @@ static void readliteral_attr(struct buf *b, termchar *c, termline *ldata,
 
     c->attr = attr;
 }
+#if !defined(COMBI_COLOUR) && !defined(THIN_TC24)
+static void readliteral_t416(struct buf *b, termchar *c, termline *ldata,
+			     unsigned long *state)
+{
+    int flg, fg_col = 0, bg_col = 0;
+    flg = get(b);
+    if (flg & 2) {
+	fg_col = 0x1000000;
+	fg_col |= (get(b) << 16);
+	fg_col |= (get(b) << 8);
+	fg_col |= (get(b));
+    }
+    if (flg & 1) {
+	bg_col = 0x1000000;
+	bg_col |= (get(b) << 16);
+	bg_col |= (get(b) << 8);
+	bg_col |= (get(b));
+    }
+
+    c->fg_colour = fg_col;
+    c->bg_colour = bg_col;
+}
+#endif
 static void readliteral_cc(struct buf *b, termchar *c, termline *ldata,
 			   unsigned long *state)
 {
@@ -881,8 +961,13 @@ static termline *decompressline(unsigned char *data, int *bytes_used)
      */
     {
 	int i;
-	for (i = 0; i < ldata->cols; i++)
+	for (i = 0; i < ldata->cols; i++) {
 	    ldata->chars[i].cc_next = 0;
+#if !defined(COMBI_COLOUR)
+	    ldata->chars[i].fg_colour = 0;
+	    ldata->chars[i].bg_colour = 0;
+#endif
+	}
     }
 
     /*
@@ -901,6 +986,12 @@ static termline *decompressline(unsigned char *data, int *bytes_used)
     readrle(b, ldata, readliteral_chr);
     readrle(b, ldata, readliteral_attr);
     readrle(b, ldata, readliteral_cc);
+#if !defined(COMBI_COLOUR) && !defined(THIN_TC24)
+    if (ldata->lattr & LATTR_HASTC) {
+	ldata->lattr &= ~LATTR_HASTC;
+	readrle(b, ldata, readliteral_t416);
+    }
+#endif
 
     /* Return the number of bytes read, for diagnostic purposes. */
     if (bytes_used)
@@ -1252,6 +1343,9 @@ static void power_on(Terminal *term, int clear)
     term->big_cursor = 0;
     term->default_attr = term->save_attr =
 	term->alt_save_attr = term->curr_attr = ATTR_DEFAULT;
+    term->fg_colour = term->bg_colour = 0;
+    term->save_fg_colour = term->save_bg_colour = 0;
+    term->alt_save_fg_colour = term->alt_save_bg_colour = 0;
     term->term_editing = term->term_echoing = FALSE;
     term->app_cursor_keys = conf_get_int(term->conf, CONF_app_cursor);
     term->app_keypad_keys = conf_get_int(term->conf, CONF_app_keypad);
@@ -1362,9 +1456,30 @@ void term_pwron(Terminal *term, int clear)
 static void set_erase_char(Terminal *term)
 {
     term->erase_char = term->basic_erase_char;
-    if (term->use_bce)
+    if (term->use_bce) {
 	term->erase_char.attr = (term->curr_attr &
 				 (ATTR_FGMASK | ATTR_BGMASK));
+#ifdef COMBI_COLOUR
+	{
+	    int charno = 1;
+	    if (term->fg_colour) {
+		term->erase_char_list[charno-1].cc_next = 1;
+		term->erase_char_list[charno].chr = (term->fg_colour | FG_COL_CHAR);
+		term->erase_char_list[charno].cc_next = 0;
+		charno ++;
+	    }
+	    if (term->bg_colour) {
+		term->erase_char_list[charno-1].cc_next = 1;
+		term->erase_char_list[charno].chr = (term->bg_colour | BG_COL_CHAR);
+		term->erase_char_list[charno].cc_next = 0;
+		charno ++;
+	    }
+	}
+#else
+	term->erase_char.fg_colour = term->fg_colour;
+	term->erase_char.bg_colour = term->bg_colour;
+#endif
+    }
 }
 
 /*
@@ -1647,6 +1762,10 @@ Terminal *term_init(Conf *myconf, struct unicode_data *ucsdata,
     /* FULL-TERMCHAR */
     term->basic_erase_char.chr = CSET_ASCII | ' ';
     term->basic_erase_char.attr = ATTR_DEFAULT;
+#ifndef COMBI_COLOUR
+    term->basic_erase_char.fg_colour = 0;
+    term->basic_erase_char.bg_colour = 0;
+#endif
     term->basic_erase_char.cc_next = 0;
     term->erase_char = term->basic_erase_char;
 
@@ -2011,6 +2130,14 @@ static void swap_screen(Terminal *term, int which, int reset, int keep_cur_pos)
         if (!reset && !keep_cur_pos)
             term->save_sco_acs = term->alt_save_sco_acs;
         term->alt_save_sco_acs = t;
+        t = term->save_fg_colour;
+        if (!reset && !keep_cur_pos)
+            term->save_fg_colour = term->alt_save_fg_colour;
+        term->alt_save_fg_colour = t;
+        t = term->save_bg_colour;
+        if (!reset && !keep_cur_pos)
+            term->save_bg_colour = term->alt_save_bg_colour;
+        term->alt_save_bg_colour = t;
     }
 
     if (reset && term->screen) {
@@ -2294,6 +2421,8 @@ static void save_cursor(Terminal *term, int save)
     if (save) {
 	term->savecurs = term->curs;
 	term->save_attr = term->curr_attr;
+	term->save_fg_colour = term->fg_colour;
+	term->save_bg_colour = term->bg_colour;
 	term->save_cset = term->cset;
 	term->save_utf = term->utf;
 	term->save_wnext = term->wrapnext;
@@ -2308,6 +2437,8 @@ static void save_cursor(Terminal *term, int save)
 	    term->curs.y = term->rows - 1;
 
 	term->curr_attr = term->save_attr;
+	term->fg_colour = term->save_fg_colour;
+	term->bg_colour = term->save_bg_colour;
 	term->cset = term->save_cset;
 	term->utf = term->save_utf;
 	term->wrapnext = term->save_wnext;
@@ -2516,6 +2647,42 @@ static void insch(Terminal *term, int n)
 	while (n--)
 	    copy_termchar(ldata, term->curs.x + n, &term->erase_char);
     }
+}
+
+static void
+palette_conv(Terminal * term, int fg, unsigned colnum)
+{
+    int i, nr, ng, nb;
+    if (colnum < 16) {
+	nr = (colnum&1) ? 170:0;
+	ng = (colnum&2) ? 170:0;
+	nb = (colnum&4) ? 170:0;
+	if (colnum&8) { nr += 85; ng += 85; nb += 85; }
+	if (colnum == 3) ng /= 2;
+    } else if (colnum < 232) {
+	i = colnum - 16;
+	nr = i / 36; ng = (i / 6) % 6; nb = i % 6;
+	nr = nr ? nr * 40 + 55 : 0;
+	ng = ng ? ng * 40 + 55 : 0;
+	nb = nb ? nb * 40 + 55 : 0;
+    } else if (colnum < 256) {
+	i = colnum - 232;
+	nr = ng = nb = i * 10 + 8;
+    } else if (colnum < 4352) {
+	i = colnum - 256;
+	nr = i / 256; ng = (i / 16) % 16; nb = i % 16;
+	nr *= 17;
+	ng *= 17;
+	nb *= 17;
+    } else if (colnum < 4608) {
+	nr = ng = nb = colnum - 4352;
+    } else if (colnum < 0x2000000 && colnum >= 0x1000000) {
+	i = colnum - 0x1000000;
+	nr = i / 65536; ng = (i / 256) % 256; nb = i % 256;
+    } else
+	nr = ng = nb = 127;
+
+    set_truecolour_attr(term, fg, nr, ng, nb);
 }
 
 /*
@@ -2733,6 +2900,7 @@ static void term_out_litchar(Terminal *term, unsigned long c)
 {
     termline *cline = scrlineptr(term->curs.y);
     int width = 0;
+    int tattr = term->curr_attr;
 
     /* An ASCII control char can't get to here ... */
     if (c < ' ') return;
@@ -2787,6 +2955,11 @@ static void term_out_litchar(Terminal *term, unsigned long c)
 	logtraffic(term->logctx, (unsigned char) c,
 		   LGTYP_ASCII);
 
+#if defined(COMBI_COLOUR) && !defined(THIN_TC24)
+    if (term->fg_colour) tattr &= ~ATTR_FGMASK;
+    if (term->bg_colour) tattr &= ~ATTR_BGMASK;
+#endif
+
     switch (width) {
       case 2:
 	/*
@@ -2829,14 +3002,27 @@ static void term_out_litchar(Terminal *term, unsigned long c)
 	/* FULL-TERMCHAR */
 	clear_cc(cline, term->curs.x);
 	cline->chars[term->curs.x].chr = c;
-	cline->chars[term->curs.x].attr = term->curr_attr;
+	cline->chars[term->curs.x].attr = tattr;
+#ifndef COMBI_COLOUR
+	cline->chars[term->curs.x].fg_colour = term->fg_colour;
+	cline->chars[term->curs.x].bg_colour = term->bg_colour;
+#else
+	if (term->fg_colour)
+	    add_cc(cline, term->curs.x, term->fg_colour | FG_COL_CHAR);
+	if (term->bg_colour)
+	    add_cc(cline, term->curs.x, term->bg_colour | BG_COL_CHAR);
+#endif
 
 	term->curs.x++;
 
 	/* FULL-TERMCHAR */
 	clear_cc(cline, term->curs.x);
 	cline->chars[term->curs.x].chr = UCSWIDE;
-	cline->chars[term->curs.x].attr = term->curr_attr;
+	cline->chars[term->curs.x].attr = tattr;
+#ifndef COMBI_COLOUR
+	cline->chars[term->curs.x].fg_colour = term->fg_colour;
+	cline->chars[term->curs.x].bg_colour = term->bg_colour;
+#endif
 
 	break;
       case 1:
@@ -2846,7 +3032,16 @@ static void term_out_litchar(Terminal *term, unsigned long c)
 	/* FULL-TERMCHAR */
 	clear_cc(cline, term->curs.x);
 	cline->chars[term->curs.x].chr = c;
-	cline->chars[term->curs.x].attr = term->curr_attr;
+	cline->chars[term->curs.x].attr = tattr;
+#ifndef COMBI_COLOUR
+	cline->chars[term->curs.x].fg_colour = term->fg_colour;
+	cline->chars[term->curs.x].bg_colour = term->bg_colour;
+#else
+	if (term->fg_colour)
+	    add_cc(cline, term->curs.x, term->fg_colour | FG_COL_CHAR);
+	if (term->bg_colour)
+	    add_cc(cline, term->curs.x, term->bg_colour | BG_COL_CHAR);
+#endif
 
 	break;
       case 0:
@@ -3844,6 +4039,7 @@ static void term_out(Terminal *term)
 				switch (def(term->esc_args[i], 0)) {
 				  case 0:	/* restore defaults */
 				    term->curr_attr = term->default_attr;
+				    term->fg_colour = term->bg_colour = 0;
 				    break;
 				  case 1:	/* enable bold */
 				    compatibility(VT100AVO);
@@ -3905,6 +4101,7 @@ static void term_out(Terminal *term)
 				  case 36:
 				  case 37:
 				    /* foreground */
+				    term->fg_colour = 0;
 				    term->curr_attr &= ~ATTR_FGMASK;
 				    term->curr_attr |=
 					(term->esc_args[i] - 30)<<ATTR_FGSHIFT;
@@ -3918,12 +4115,14 @@ static void term_out(Terminal *term)
 				  case 96:
 				  case 97:
 				    /* aixterm-style bright foreground */
+				    term->fg_colour = 0;
 				    term->curr_attr &= ~ATTR_FGMASK;
 				    term->curr_attr |=
 					((term->esc_args[i] - 90 + 8)
                                          << ATTR_FGSHIFT);
 				    break;
 				  case 39:	/* default-foreground */
+				    term->fg_colour = 0;
 				    term->curr_attr &= ~ATTR_FGMASK;
 				    term->curr_attr |= ATTR_DEFFG;
 				    break;
@@ -3936,6 +4135,7 @@ static void term_out(Terminal *term)
 				  case 46:
 				  case 47:
 				    /* background */
+				    term->bg_colour = 0;
 				    term->curr_attr &= ~ATTR_BGMASK;
 				    term->curr_attr |=
 					(term->esc_args[i] - 40)<<ATTR_BGSHIFT;
@@ -3949,22 +4149,29 @@ static void term_out(Terminal *term)
 				  case 106:
 				  case 107:
 				    /* aixterm-style bright background */
+				    term->bg_colour = 0;
 				    term->curr_attr &= ~ATTR_BGMASK;
 				    term->curr_attr |=
 					((term->esc_args[i] - 100 + 8)
                                          << ATTR_BGSHIFT);
 				    break;
 				  case 49:	/* default-background */
+				    term->bg_colour = 0;
 				    term->curr_attr &= ~ATTR_BGMASK;
 				    term->curr_attr |= ATTR_DEFBG;
 				    break;
 				  case 38:   /* xterm 256-colour mode */
 				    if (i+2 < term->esc_nargs &&
 					term->esc_args[i+1] == 5) {
+					term->fg_colour = 0;
 					term->curr_attr &= ~ATTR_FGMASK;
-					term->curr_attr |=
-					    ((term->esc_args[i+2] & 0xFF)
-					     << ATTR_FGSHIFT);
+					if (term->esc_args[i+2] < 256)
+					    term->curr_attr |=
+						((term->esc_args[i+2] & 0xFF)
+						 << ATTR_FGSHIFT);
+					else
+					    palette_conv(term, 1,
+						    term->esc_args[i+2]);
 					i += 2;
 				    }
 				    if (i+4 < term->esc_nargs &&
@@ -3979,10 +4186,15 @@ static void term_out(Terminal *term)
 				  case 48:   /* xterm 256-colour mode */
 				    if (i+2 < term->esc_nargs &&
 					term->esc_args[i+1] == 5) {
+					term->bg_colour = 0;
 					term->curr_attr &= ~ATTR_BGMASK;
-					term->curr_attr |=
-					    ((term->esc_args[i+2] & 0xFF)
-					     << ATTR_BGSHIFT);
+					if (term->esc_args[i+2] < 256)
+					    term->curr_attr |=
+						((term->esc_args[i+2] & 0xFF)
+						 << ATTR_BGSHIFT);
+					else
+					    palette_conv(term, 0,
+						    term->esc_args[i+2]);
 					i += 2;
 				    }
 				    if (i+4 < term->esc_nargs &&
@@ -4306,6 +4518,7 @@ static void term_out(Terminal *term)
 			    term->curr_attr |= colour;
 			    term->default_attr &= ~ATTR_FGMASK;
 			    term->default_attr |= colour;
+			    term->fg_colour = 0;
 			    set_erase_char(term);
 			}
 			break;
@@ -4320,6 +4533,7 @@ static void term_out(Terminal *term)
 			    term->curr_attr |= colour;
 			    term->default_attr &= ~ATTR_BGMASK;
 			    term->default_attr |= colour;
+			    term->bg_colour = 0;
 			    set_erase_char(term);
 			}
 			break;
@@ -4332,6 +4546,7 @@ static void term_out(Terminal *term)
 			compatibility(ANSI);
 			term->width_override = term->esc_args[0];
 			break;
+
 		      case ANSI('p', '"'): /* DECSCL: set compat level */
 			/*
 			 * Allow the host to make this emulator a
@@ -4772,6 +4987,7 @@ static void term_out(Terminal *term)
 		term->curr_attr &= ~ATTR_FGMASK;
 		term->curr_attr &= ~ATTR_BOLD;
 		term->curr_attr |= (c & 0xF) << ATTR_FGSHIFT;
+		term->fg_colour = 0;
 		set_erase_char(term);
 		break;
 	      case VT52_BG:
@@ -4779,6 +4995,7 @@ static void term_out(Terminal *term)
 		term->curr_attr &= ~ATTR_BGMASK;
 		term->curr_attr &= ~ATTR_BLINK;
 		term->curr_attr |= (c & 0xF) << ATTR_BGSHIFT;
+		term->bg_colour = 0;
 		set_erase_char(term);
 		break;
 #endif
@@ -5093,6 +5310,7 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 	termchar *lchars;
 	int dirty_line, dirty_run, selected;
 	unsigned long attr = 0, cset = 0;
+	int fg_col=0, bg_col=0;
 	int start = 0;
 	int ccount = 0;
 	int last_run_dirty = 0;
@@ -5117,11 +5335,22 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 	 */
 	for (j = 0; j < term->cols; j++) {
 	    unsigned long tattr, tchar;
+#ifndef COMBI_COLOUR
+	    int tfg_col, tbg_col;
+#endif
 	    termchar *d = lchars + j;
 	    scrpos.x = backward ? backward[j] : j;
 
 	    tchar = d->chr;
 	    tattr = d->attr;
+
+#ifndef COMBI_COLOUR
+            if (term->ansi_colour && term->xterm_256_colour) {
+		tfg_col = d->fg_colour;
+		tbg_col = d->bg_colour;
+	    } else
+		tfg_col = tbg_col = 0;
+#endif
 
             if (!term->ansi_colour)
                 tattr = (tattr & ~(ATTR_FGMASK | ATTR_BGMASK)) | 
@@ -5194,6 +5423,10 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 	    /* FULL-TERMCHAR */
 	    newline[j].attr = tattr;
 	    newline[j].chr = tchar;
+#ifndef COMBI_COLOUR
+	    newline[j].fg_colour = tfg_col;
+	    newline[j].bg_colour = tbg_col;
+#endif
 	    /* Combining characters are still read from lchars */
 	    newline[j].cc_next = 0;
 	}
@@ -5221,6 +5454,10 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 	    }
 
 	    if (term->disptext[i]->chars[j].chr != newline[j].chr ||
+#ifndef COMBI_COLOUR
+		term->disptext[i]->chars[j].fg_colour != newline[j].fg_colour ||
+		term->disptext[i]->chars[j].bg_colour != newline[j].bg_colour ||
+#endif
 		(term->disptext[i]->chars[j].attr &~ DATTR_MASK)
 		!= newline[j].attr) {
 		int k;
@@ -5246,16 +5483,26 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 
 	for (j = 0; j < term->cols; j++) {
 	    unsigned long tattr, tchar;
+	    int tfg_col, tbg_col;
 	    int break_run, do_copy;
 	    termchar *d = lchars + j;
 
 	    tattr = newline[j].attr;
 	    tchar = newline[j].chr;
+#ifndef COMBI_COLOUR
+	    tfg_col = newline[j].fg_colour;
+	    tbg_col = newline[j].bg_colour;
+#else
+	    tfg_col = tbg_col = 0;
+#endif
 
 	    if ((term->disptext[i]->chars[j].attr ^ tattr) & ATTR_WIDE)
 		dirty_line = TRUE;
 
 	    break_run = ((tattr ^ attr) & term->attr_mask) != 0;
+
+	    if (fg_col != tfg_col || bg_col != tbg_col)
+		break_run = TRUE;
 
 #ifdef USES_VTLINE_HACK
 	    /* Special hack for VT100 Linedraw glyphs */
@@ -5290,14 +5537,16 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 	    if (break_run) {
 		if ((dirty_run || last_run_dirty) && ccount > 0) {
 		    do_text(ctx, start, i, ch, ccount, attr,
-			    ldata->lattr);
+			    ldata->lattr, fg_col, bg_col);
 		    if (attr & (TATTR_ACTCURS | TATTR_PASCURS))
 			do_cursor(ctx, start, i, ch, ccount, attr,
-				  ldata->lattr);
+				  ldata->lattr, fg_col, bg_col);
 		}
 		start = j;
 		ccount = 0;
 		attr = tattr;
+		fg_col = tfg_col;
+		bg_col = tbg_col;
 		cset = CSET_OF(tchar);
 		if (term->ucsdata->dbcs_screenfont)
 		    last_run_dirty = dirty_run;
@@ -5306,7 +5555,8 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 
 	    do_copy = FALSE;
 	    if (!termchars_equal_override(&term->disptext[i]->chars[j],
-					  d, tchar, tattr)) {
+					  d, tchar, tattr,
+					  tfg_col, tbg_col)) {
 		do_copy = TRUE;
 		dirty_run = TRUE;
 	    }
@@ -5356,7 +5606,14 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 			ch[ccount++] = (wchar_t) LOW_SURROGATE_OF(schar);
 		    } else
 #endif /* PLATFORM_IS_UTF16 */
-		    ch[ccount++] = (wchar_t) schar;
+		    if (schar < 0x110000)
+			ch[ccount++] = (wchar_t) schar;
+#ifdef COMBI_COLOUR
+		    else if ((schar & 0xFF000000) == BG_COL_CHAR)
+			bg_col = (schar & 0x1FFFFFF);
+		    else if ((schar & 0xFF000000) == FG_COL_CHAR)
+			fg_col = (schar & 0x1FFFFFF);
+#endif
 		}
 
 		attr |= TATTR_COMBINING;
@@ -5366,6 +5623,10 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 		copy_termchar(term->disptext[i], j, d);
 		term->disptext[i]->chars[j].chr = tchar;
 		term->disptext[i]->chars[j].attr = tattr;
+#ifndef COMBI_COLOUR
+		term->disptext[i]->chars[j].fg_colour = tfg_col;
+		term->disptext[i]->chars[j].bg_colour = tbg_col;
+#endif
 		if (start == j)
 		    term->disptext[i]->chars[j].attr |= DATTR_STARTRUN;
 	    }
@@ -5388,10 +5649,10 @@ static void do_paint(Terminal *term, Context ctx, int may_optimise)
 	}
 	if (dirty_run && ccount > 0) {
 	    do_text(ctx, start, i, ch, ccount, attr,
-		    ldata->lattr);
+		    ldata->lattr, fg_col, bg_col);
 	    if (attr & (TATTR_ACTCURS | TATTR_PASCURS))
 		do_cursor(ctx, start, i, ch, ccount, attr,
-			  ldata->lattr);
+			  ldata->lattr, fg_col, bg_col);
 	}
 
 	unlineptr(ldata);
@@ -6578,8 +6839,28 @@ int term_get_userpass_input(Terminal *term, prompts_t *p,
 static void
 set_truecolour_attr(Terminal * term, int fg, int r, int g, int b)
 {
+#if defined(COMBI_COLOUR) || defined(THIN_TC24)
     int best_diff = -1, nearest_static = 0;
+#endif
+    int colour_no = 0;
 
+    /* NB: By design valid values for the blue component are
+       0..16777215, representing 0xRRGGBB. */
+
+    colour_no = ((r<<16) | (g<<8) | b | 0x1000000);
+    colour_no &= 0x1FFFFFF;
+
+    if (fg) {
+	term->curr_attr &= ~ATTR_FGMASK;
+	term->curr_attr |= ATTR_DEFFG;
+	term->fg_colour = colour_no;
+    } else {
+	term->curr_attr &= ~ATTR_BGMASK;
+	term->curr_attr |= ATTR_DEFBG;
+	term->bg_colour = colour_no;
+    }
+
+#if defined(COMBI_COLOUR) || defined(THIN_TC24)
     /*
      * Annoyingly the 6x6x6 cube that XTerm uses by default (and so our
      * cube) isn't the websafe colours. This means the standard method
@@ -6630,8 +6911,13 @@ set_truecolour_attr(Terminal * term, int fg, int r, int g, int b)
     if (fg) {
 	term->curr_attr &= ~ATTR_FGMASK;
 	term->curr_attr |= (nearest_static << ATTR_FGSHIFT);
+	if (best_diff == 0)
+	    term->fg_colour = 0;
     } else {
 	term->curr_attr &= ~ATTR_BGMASK;
 	term->curr_attr |= (nearest_static << ATTR_BGSHIFT);
+	if (best_diff == 0)
+	    term->bg_colour = 0;
     }
+#endif
 }
