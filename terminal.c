@@ -1375,6 +1375,10 @@ static void power_on(Terminal *term, int clear)
     term->use_bce = conf_get_int(term->conf, CONF_bce);
     term->blink_is_real = conf_get_int(term->conf, CONF_blinktext);
     term->erase_char = term->basic_erase_char;
+    term->bold_attr = (ATTR_DEFAULT|ATTR_BOLD);
+    term->dim_attr = (ATTR_DEFAULT|ATTR_DIM);
+    term->italic_attr = (ATTR_DEFAULT|ATTR_ITALIC);
+    term->under_attr = (ATTR_DEFAULT|ATTR_UNDER);
     term->alt_which = 0;
     term_print_finish(term);
     term->xterm_mouse = 0;
@@ -3005,6 +3009,13 @@ static void term_out_litchar(Terminal *term, unsigned long c)
     if (term->fg_colour) tattr &= ~ATTR_FGMASK;
     if (term->bg_colour) tattr &= ~ATTR_BGMASK;
 #endif
+
+    if (term->fg_colour == 0 && term->bg_colour == 0) {
+	if (tattr == (ATTR_DEFAULT|ATTR_BOLD)) tattr = term->bold_attr;
+	if (tattr == (ATTR_DEFAULT|ATTR_DIM)) tattr = term->dim_attr;
+	if (tattr == (ATTR_DEFAULT|ATTR_ITALIC)) tattr = term->italic_attr;
+	if (tattr == (ATTR_DEFAULT|ATTR_UNDER)) tattr = term->under_attr;
+    }
 
     switch (width) {
       case 2:
@@ -4850,6 +4861,33 @@ static void term_out(Terminal *term)
 		      case ANSI('Z', ' '): /* PEC - PRESENTATION EXPAND OR CONTRACT */
 			compatibility(ANSI);
 			term->width_override = term->esc_args[0];
+			break;
+
+		      case ANSI('a', ANSI('=', '+')):
+			{
+			    int attr = ATTR_DEFAULT;
+			    if (term->esc_nargs > 1) {
+				attr &= ~ATTR_FGMASK;
+				attr |= ((term->esc_args[1] & 255) << ATTR_FGSHIFT);
+			    }
+			    if (term->esc_nargs > 2) {
+				attr &= ~ATTR_BGMASK;
+				attr |= ((term->esc_args[2] & 255) << ATTR_BGSHIFT);
+			    }
+			    switch(term->esc_args[0])
+			    {
+			    case 0:
+				term->bold_attr = (ATTR_DEFAULT|ATTR_BOLD);
+				term->dim_attr = (ATTR_DEFAULT|ATTR_DIM);
+				term->italic_attr = (ATTR_DEFAULT|ATTR_ITALIC);
+				term->under_attr = (ATTR_DEFAULT|ATTR_UNDER);
+				break;
+			    case 1: term->bold_attr = attr; break;
+			    case 2: term->dim_attr = attr; break;
+			    case 3: term->italic_attr = attr; break;
+			    case 4: term->under_attr = attr; break;
+			    }
+			}
 			break;
 
 		      case ANSI('p', '"'): /* DECSCL: set compat level */
