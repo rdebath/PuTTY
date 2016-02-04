@@ -1,0 +1,16 @@
+diff --git a/window.c b/window.c
+index 3cd719a..62475de 100644
+--- a/window.c
++++ b/window.c
+@@ -260,7 +260,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show) {
+ 	char msg[1024];
+ 	char *realhost;
+ 
+-	error = back->init (hwnd, cfg.host, cfg.port, &realhost);
++	if (back->init)
++	    error = back->init (hwnd, cfg.host, cfg.port, &realhost);
++	else
++	    error = "Backend missing";
+ 	if (error) {
+ 	    sprintf(msg, "Unable to open connection:\n%s", error);
+ 	    MessageBox(NULL, msg, "PuTTY Error", MB_ICONERROR | MB_OK);
