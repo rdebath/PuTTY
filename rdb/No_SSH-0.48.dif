@@ -1,0 +1,29 @@
+diff --git a/putty.h b/putty.h
+index 273a811..e891c2c 100644
+--- a/putty.h
++++ b/putty.h
+@@ -240,7 +240,7 @@ extern Backend telnet_backend;
+  * Exports from ssh.c.
+  */
+ 
+-extern Backend ssh_backend;
++Backend ssh_backend;
+ 
+ /*
+  * Exports from ldisc.c.
+diff --git a/window.c b/window.c
+index 0a68857..fab0761 100644
+--- a/window.c
++++ b/window.c
+@@ -291,7 +291,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show) {
+ 	char msg[1024];
+ 	char *realhost;
+ 
+-	error = back->init (hwnd, cfg.host, cfg.port, &realhost);
++	if (back->init)
++	    error = back->init (hwnd, cfg.host, cfg.port, &realhost);
++	else
++	    error = "Backend missing";
+ 	if (error) {
+ 	    sprintf(msg, "Unable to open connection:\n%s", error);
+ 	    MessageBox(NULL, msg, "PuTTY Error", MB_ICONERROR | MB_OK);

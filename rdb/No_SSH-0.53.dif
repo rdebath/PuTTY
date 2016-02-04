@@ -1,0 +1,13 @@
+diff --git a/window.c b/window.c
+index 9ea6c01..9315aeb 100644
+--- a/window.c
++++ b/window.c
+@@ -77,6 +77,8 @@
+ #define WHEEL_DELTA 120
+ #endif
+ 
++static int is_shift_pressed(void);
++
+ static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+ static int TranslateKey(UINT message, WPARAM wParam, LPARAM lParam,
+ 			unsigned char *output);
