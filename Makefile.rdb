@@ -54,15 +54,15 @@ putty: unix-putty windows-putty
 
 # All cleanup
 
-clean: unix/Makefile.gtk windows/Makefile.cyg
+clean: unix/Makefile.gtk windows/Makefile.winx
 	make -C unix -f Makefile.gtk clean
-	make -C windows -f Makefile.cyg clean
+	make -C windows -f Makefile.winx clean
 	make -C doc clean
 	make -C icons clean
 	@-[ ! -d macosx ] || make -C macosx clean
 	@# Clean version.h, and remove the makefiles so it gets regenerated.
 	@-[ ! -f version.bak ] || mv -f version.bak version.h
-	@-rm -f unix/Makefile.gtk windows/Makefile.vc windows/Makefile.cyg
+	@-rm -f unix/Makefile.gtk windows/Makefile.vc windows/Makefile.winx
 
 doc-all:
 	make -C doc
@@ -85,19 +85,21 @@ unix-pterm: unix/Makefile.gtk
 
 # WINDOWS Cross compile
 
-windows-all: windows/Makefile.cyg
-	make TOOLPATH=$(WINTOOLPATH32) $(WINCNF) -C windows -f Makefile.cyg
+windows-all: windows/Makefile.winx
+	make TOOLPATH=$(WINTOOLPATH32) $(WINCNF) -C windows -f Makefile.winx
 
-windows-putty: windows/Makefile.cyg
-	make TOOLPATH=$(WINTOOLPATH32) $(WINCNF) -C windows -f Makefile.cyg putty.exe
+windows-putty: windows/Makefile.winx
+	make TOOLPATH=$(WINTOOLPATH32) $(WINCNF) -C windows -f Makefile.winx putty.exe
 
-windows-x64: windows/Makefile.cyg
-	make TOOLPATH=$(WINTOOLPATH64) $(WINCNF) -C windows -f Makefile.cyg
+windows-x64: windows/Makefile.winx
+	make TOOLPATH=$(WINTOOLPATH64) $(WINCNF) -C windows -f Makefile.winx
 
 # Makefiles
 
-unix/Makefile.gtk windows/Makefile.vc windows/Makefile.cyg: mkfiles.pl
+unix/Makefile.gtk windows/Makefile.vc windows/Makefile.winx: mkfiles.pl
 	./mkfiles.pl
+	[ ! -f windows/Makefile.cyg ] || cp windows/Makefile.cyg windows/Makefile.winx
+	[ ! -f windows/Makefile.mgw ] || cp windows/Makefile.mgw windows/Makefile.winx
 ifneq ($(wildcard version.h),)
 	@echo Dynamic change made to version.h, you should use:
 	@echo : git update-index --assume-unchanged version.h
@@ -159,7 +161,9 @@ realclean distclean: clean
 	@-rm -f unix/Makefile.ux
 	@-rm -f unix/Makefile.gtk
 	@# Windows
+	@-rm -f windows/Makefile.mgw
 	@-rm -f windows/Makefile.cyg
+	@-rm -f windows/Makefile.winx
 	@-rm -f windows/Makefile.vc
 	@-rm -f windows/Makefile.bor
 	@-rm -f windows/Makefile.lcc
