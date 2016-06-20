@@ -1704,6 +1704,25 @@ static void pangofont_draw_internal(unifont_drawctx *ctx, unifont *font,
                         break;
                     }
                 }
+
+		/* However, even if all the characters are the correct size
+		 * this doesn't mean that Pango will add them up nicely.
+		 * Sometimes it's something as sensible as kerning, other
+		 * times it just wants to be contrary.
+		 */
+		if (n > 1) {
+		    pango_layout_set_text(layout, utfptr, clen);
+		    pango_layout_get_pixel_extents(layout, NULL, &rect);
+		    if (rect.width != n * desired) {
+			/* It broke, ****, ****, ****! */
+			n = 1;
+			clen = 1;
+			while (clen < utflen &&
+			       (unsigned char)utfptr[clen] >= 0x80 &&
+			       (unsigned char)utfptr[clen] < 0xC0)
+			    clen++;
+		    }
+		}
             }
         }
 
