@@ -771,8 +771,8 @@ static void x11font_cairo_draw_16(unifont_drawctx *ctx,
                 x11font_cairo_cache_glyph(xfi, glyphindex);
             }
             x11font_cairo_draw_glyph(ctx, xfi, x, y, glyphindex);
-            x += XTextWidth16(xfi->xfs, string+i, 1);
         }
+	x += XTextWidth16(xfi->xfs, string+i, 1);
     }
 }
 
@@ -784,8 +784,8 @@ static void x11font_cairo_draw_8(unifont_drawctx *ctx,
     const char *string = (const char *)vstring + start;
     int i;
     for (i = 0; i < length; i++) {
-        if (x11_font_has_glyph(xfi->xfs, 0, string[i])) {
-            int glyphindex = (unsigned char)string[i];
+        int glyphindex = (unsigned char)string[i];
+        if (x11_font_has_glyph(xfi->xfs, 0, glyphindex)) {
             if (glyphindex >= xfi->nglyphs ||
                 !xfi->glyphcache[glyphindex].surface) {
                 XDrawImageString(disp, xfi->pixmap, xfi->gc,
@@ -794,8 +794,8 @@ static void x11font_cairo_draw_8(unifont_drawctx *ctx,
                 x11font_cairo_cache_glyph(xfi, glyphindex);
             }
             x11font_cairo_draw_glyph(ctx, xfi, x, y, glyphindex);
-            x += XTextWidth(xfi->xfs, string+i, 1);
         }
+	x += XTextWidth(xfi->xfs, string+i, 1);
     }
 }
 #endif /* DRAW_TEXT_CAIRO */
