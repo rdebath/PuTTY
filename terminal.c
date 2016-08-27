@@ -5200,19 +5200,19 @@ static void term_out(Terminal *term)
 		     *
 		     * From VT102 manual:
 		     *       137 _  Blank             - Same
-		     *       140 `  Reserved          - Humm.
-		     *       141 a  Solid rectangle   - Similar
-		     *       142 b  1/                - Top half of fraction for the
-		     *       143 c  3/                - subscript numbers below.
-		     *       144 d  5/
+		     *       140 `  Reserved          - Actually: "Cd"
+		     *       141 a  Solid rectangle   - █ - All bits set.
+		     *       142 b  1/                - Top half of fraction
+		     *       143 c  3/                -   for the subscript
+		     *       144 d  5/                -   numbers below.
 		     *       145 e  7/
-		     *       146 f  Degrees           - Same
-		     *       147 g  Plus or minus     - Same
-		     *       150 h  Right arrow
-		     *       151 i  Ellipsis (dots)
-		     *       152 j  Divide by
-		     *       153 k  Down arrow
-		     *       154 l  Bar at scan 0
+		     *       146 f  Degrees           - °
+		     *       147 g  Plus or minus     - ±
+		     *       150 h  Right arrow       - →
+		     *       151 i  Ellipsis (dots)   - …
+		     *       152 j  Divide by         - ÷
+		     *       153 k  Down arrow        - ↓
+		     *       154 l  Bar at scan 0     - VT52 uses 8 lines
 		     *       155 m  Bar at scan 1
 		     *       156 n  Bar at scan 2
 		     *       157 o  Bar at scan 3     - Similar
@@ -5230,7 +5230,7 @@ static void term_out(Terminal *term)
 		     *       173 {  Subscript 7
 		     *       174 |  Subscript 8
 		     *       175 }  Subscript 9
-		     *       176 ~  Paragraph
+		     *       176 ~  Paragraph         - ¶
 		     *
 		     */
 		  case 'F':
