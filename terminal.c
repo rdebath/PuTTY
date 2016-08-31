@@ -7053,6 +7053,9 @@ int format_arrow_key(char *buf, Terminal *term, int xkey, int ctrl)
 	 * cursor and app keypad are independently switchable
 	 * modes. If anyone complains about _this_ I'll have to
 	 * put in a configurable option.
+	 *
+	 * RDB: The VT100 ROM itself accepts them independently,
+	 * so this is a documentation error or usage recommendation.
 	 */
 	if (!term->app_keypad_keys)
 	    app_flg = 0;
