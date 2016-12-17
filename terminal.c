@@ -1384,6 +1384,7 @@ static void power_on(Terminal *term, int clear)
     term->xterm_mouse = 0;
     term->xterm_extended_mouse = 0;
     term->urxvt_extended_mouse = 0;
+    term->xterm_alt_scroll = 0;
     set_raw_mouse_mode(term->frontend, FALSE);
     term->bracketed_paste = FALSE;
     {
@@ -2819,6 +2820,10 @@ static void toggle_mode(Terminal *term, int mode, int query, int state)
 	    break;
 	  case 1006:		       /* xterm extended mouse */
 	    term->xterm_extended_mouse = state ? 1 : 0;
+	    break;
+	  case 1007:		       /* xterm extended mouse */
+	    term->xterm_alt_scroll = state ? 1 : 0;
+	    set_raw_mouse_mode(term->frontend, state);
 	    break;
 	  case 1015:		       /* urxvt extended mouse */
 	    term->urxvt_extended_mouse = state ? 1 : 0;
@@ -6767,7 +6772,7 @@ void term_mouse(Terminal *term, Mouse_Button braw, Mouse_Button bcooked,
 {
     pos selpoint;
     termline *ldata;
-    int raw_mouse = (term->xterm_mouse &&
+    int raw_mouse = ((term->xterm_mouse || term->xterm_alt_scroll) &&
 		     !term->no_mouse_rep &&
 		     !(term->mouse_override && shift));
     int default_seltype;
@@ -6822,6 +6827,7 @@ void term_mouse(Terminal *term, Mouse_Button braw, Mouse_Button bcooked,
 	int encstate = 0, r, c, wheel;
 	char abuf[32];
 	int len = 0;
+	int bypass = 0;
 
 	if (term->ldisc) {
 
@@ -6888,13 +6894,18 @@ void term_mouse(Terminal *term, Mouse_Button braw, Mouse_Button bcooked,
 		len = sprintf(abuf, "\033[<%d;%d;%d%c", encstate, c, r, a == MA_RELEASE ? 'm' : 'M');
 	    } else if (term->urxvt_extended_mouse) {
 		len = sprintf(abuf, "\033[%d;%d;%dM", encstate + 32, c, r);
+	    } else if (term->xterm_alt_scroll && (wheel || !term->xterm_mouse)) {
+		if (!wheel || shift || ctrl)
+		    bypass = 1;
+		else
+		    len = sprintf(abuf, "\033[%c", encstate+1);
 	    } else if (c <= 223 && r <= 223) {
 		len = sprintf(abuf, "\033[M%c%c%c", encstate + 32, c + 32, r + 32);
 	    }
             if (len > 0)
                 ldisc_send(term->ldisc, abuf, len, 0);
 	}
-	return;
+	if (!bypass || len != 0) return;
     }
 
     /*
