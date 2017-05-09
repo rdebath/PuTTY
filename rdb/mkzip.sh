@@ -1,6 +1,6 @@
 #!/bin/sh -
 
-rm -f putty-src.zip
+rm -f putty-src.zip putty-win.zip
 
 # Add all the text files
 find * \( -name rdb -prune -false \) -o -type f ! \(  \
@@ -33,3 +33,5 @@ find * \
     -o -name \*.dsp \
     -o -name \*.cur \
 | zip -@ -X -q putty-src.zip
+
+zip -j9 putty-win.zip windows/*.exe

@@ -29,6 +29,9 @@ NCOMMIT=$(
     [ -f putty-src.zip ] &&
 	echo "100644 blob $(git hash-object -w putty-src.zip)	putty-src.zip"
 
+    [ -f putty-win.zip ] &&
+	echo "100644 blob $(git hash-object -w putty-win.zip)	putty-win.zip"
+
     for i in $(ls windows/*.exe)
     do
 	j=$(basename $i .exe)

@@ -200,3 +200,4 @@ realclean distclean: clean
 	@# Simon's clutter
 	@-[ ! -f licence.pl ] || rm -f doc/licence.but doc/copy.but licence.h
 	@-rm -f putty-src.zip
+	@-rm -f putty-win.zip
