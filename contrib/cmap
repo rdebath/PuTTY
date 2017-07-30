@@ -37,8 +37,8 @@ BEGIN{
 
     # Putty Default colours ...
     l3 = 255; l2 = 187; l1 = 85; l0 = 0;
-    vgatweak = xtermtweak = 0;
-    xtermcursor = 0;
+    vgatweak = 0;
+    whitecursor = 0;
     def_white = -1;
 
     reset = 0;
@@ -90,7 +90,7 @@ BEGIN{
 	    print "  -cd  Copy defaults from first 16"
 	    print "  -gc  Green cursor"
 	    print "  -mc  Magenta cursor"
-	    print "  -dg  Default colour green"
+	    print "  -wc  White cursor"
 	    print "  -mono Flatten the palette to monochrome"
 	    print "  -nocon Do not display any concealed text"
 	    print "  -s   Add prefix to send through screen(1)"
@@ -112,11 +112,9 @@ BEGIN{
 	else if (av == "-8") eightbits = 1;
 	else if (av == "-s") screen = 1;
 	else if (av == "-rv") whitebg = !whitebg;
-	else if (av == "-mc") mc = 1;
-	else if (av == "-gc") gc = 1;
-	else if (av == "-dg") dg = 1;
-	else if (av == "-mg") mg = 1;
-	else if (av == "-xc") xtermcursor = 1;
+	else if (av == "-mc") magentacursor = 1;
+	else if (av == "-gc") greencursor = 1;
+	else if (av == "-wc") whitecursor = 1;
 	else if (av == "-mono") mono = 1;
 	else if (av == "-xterm") xtermseq = !(puttyseq=linuxseq=itermseq=0);
 	else if (av == "-linux") linuxseq = !(puttyseq=xtermseq=itermseq=0);
@@ -154,16 +152,9 @@ BEGIN{
 	}
 
 	else if (av == "-x") {	    # XTerm
-	    # The primaries are full and the red3, green3 related levels.
+	    # The l? are set to approx values, then overidden
 	    l3 = 255; l2 = 205; l1 = 0; l0 = 0;
-	    # Several tweaks to make the colours look better.
-	    xterm_blue = 238;
-	    xterm_ltblack = 127;
-	    def_white = 229;
-	    xterm_blue_boost = 92;
-	    xtermtweak = 1;
-	    xtermcursor = 1;
-	    # whitebg = !whitebg; # This is set by the desktop not xterm.
+	    fakefile = "xterm";
 	}
 
 	else if (av == "-3") {	    # XTerm colour3 base.
@@ -199,7 +190,7 @@ BEGIN{
 	    def_white = 182;
 	}
 	else if (av == "-sol") {    # Solarized ansi
-	    l3 = 255; l2 = 170; l1 = 85; l0 = 0;
+	    l3 = 201; l2 = 156; l1 = 87; l0 = 42;
 	    fakefile = "sol";
 	}
 	else if (substr(av,1,1) == "-") { # Problem
@@ -227,7 +218,6 @@ BEGIN{
 	    blue = b * (l2 - l0) + l0;
 
 	    if (vgatweak && colnum == 3) green = l1;
-	    if (xtermtweak && colnum == 4) blue = xterm_blue;
 	    if (def_white >= 0 && colnum == 7) red = green = blue = def_white;
 
 	    set_palette(colnum, red, green, blue);
@@ -243,9 +233,6 @@ BEGIN{
 	    green = g * (l3 - l1) + l1;
 	    blue = b * (l3 - l1) + l1;
 
-	    if (xtermtweak && colnum == 0) red = green = blue = xterm_ltblack;
-	    if (xtermtweak && colnum == 4) red = green = xterm_blue_boost;
-
 	    set_palette(colnum+8, red, green, blue);
 	    if (!whitebg) {
 		if (colnum == 0) set_palette(19, red, green, blue);
@@ -260,6 +247,8 @@ BEGIN{
 
     if (fakefile == "sol")
 	import_solarized_ansi()
+    if (fakefile == "xterm")
+	import_xterm_ansi()
 }
 
 END{
@@ -294,26 +283,21 @@ END{
 		set_palette(23, pal_red[0], pal_grn[0], pal_blu[0]);
 	}
 
-	# Forground
-	if (dg) set_palette(16, 64, 220, 64);
-	if (dg) set_palette(17, 192, 255, 192);
-	if (mg) set_palette(16, 192, 220, 192);
-
-	# Background
+	# Give the background a light colour wash.
 	if (rw||gw||bw)
-	    set_palette(18, 32*rw, 32*gw, 32*bw);
+	    set_palette(18, l2*rw/6, l2*gw/6, l2*bw/6);
 
 	# Cursor colours
-	if ((!xtermcursor && !copydflts) || mc || gc) {
-	    xtermcursor = 0
+	if ((!whitecursor && !copydflts) || magentacursor || greencursor) {
+	    whitecursor = 0
 	    set_palette(20, l0, l0, l0);
-	    if (mc)
+	    if (magentacursor)
 		set_palette(21, l3, l0, l3);
 	    else
 		set_palette(21, l0, l3, l0);
 	}
 
-	if (xtermcursor && (pal_set[16] && pal_set[18])) {
+	if (whitecursor && (pal_set[16] && pal_set[18])) {
 	    set_palette(20, pal_red[18], pal_grn[18], pal_blu[18]);
 	    set_palette(21, pal_red[16], pal_grn[16], pal_blu[16]);
 	}
@@ -621,9 +605,9 @@ function set_palette(colnum,red,green,blue) {
     # printf "Set palette %d (%d) = %d,%d,%d\n", colnum, initset, red,green,blue
 
     pal_set[colnum] = 1;
-    pal_red[colnum] = red;
-    pal_grn[colnum] = green;
-    pal_blu[colnum] = blue;
+    pal_red[colnum] = int(red);
+    pal_grn[colnum] = int(green);
+    pal_blu[colnum] = int(blue);
     if (!initset) pal_ok[colnum] = 1;
 }
 
@@ -1057,6 +1041,34 @@ function import_solarized_ansi() {
     set_palette(mintty_colnum["SelectionColour"], 7,54,66);
 }
 
+function import_xterm_ansi() {
+    if (!minttyinit) do_minttyinit();
+
+    set_palette(mintty_colnum["Black"], 0,0,0);
+    set_palette(mintty_colnum["Red"], 205,0,0);
+    set_palette(mintty_colnum["Green"], 0,205,0);
+    set_palette(mintty_colnum["Yellow"], 205,205,0);
+    set_palette(mintty_colnum["Blue"], 0,0,238);
+    set_palette(mintty_colnum["Magenta"], 205,0,205);
+    set_palette(mintty_colnum["White"], 229,229,229);
+
+    set_palette(mintty_colnum["BoldBlack"], 127,127,127);
+    set_palette(mintty_colnum["BoldRed"], 255,0,0);
+    set_palette(mintty_colnum["BoldGreen"], 0,255,0);
+    set_palette(mintty_colnum["BoldYellow"], 255,255,0);
+    set_palette(mintty_colnum["BoldBlue"], 92,92,255);
+    set_palette(mintty_colnum["BoldMagenta"], 255,0,255);
+    set_palette(mintty_colnum["BoldCyan"], 0,255,255);
+    set_palette(mintty_colnum["BoldWhite"], 255,255,255);
+
+    set_palette(mintty_colnum["ForegroundColour"], 229,229,229);
+    set_palette(mintty_colnum["BoldColour"], 255,255,255);
+    set_palette(mintty_colnum["BackgroundColour"], 0,0,0);
+    set_palette(mintty_colnum["BoldBackgroundColour"], 127,127,127);
+    set_palette(mintty_colnum["CursorTextColour"], 0,0,0);
+    set_palette(mintty_colnum["CursorColour"], 229,229,229);
+}
+
 ################################################################################
 
 { has_file=1; fname=FILENAME; }
@@ -1071,7 +1083,7 @@ function import_solarized_ansi() {
 
     colnum = xrdb_colnum[colour_name];
 
-    if ((xtermcursor || mc || gc) && (colnum == 20 || colnum == 21)) next;
+    if ((whitecursor || magentacursor || greencursor) && (colnum == 20 || colnum == 21)) next;
 
     colour[1] = hexconv[substr(colour_hex,2,2)];
     colour[2] = hexconv[substr(colour_hex,4,2)];
@@ -1125,7 +1137,7 @@ function import_solarized_ansi() {
 	split("18,19,16,17,21,20", map, ",");
 	colnum = 0+map[colnum-15];
     }
-    if ((xtermcursor || mc || gc) && (colnum == 20 || colnum == 21)) next;
+    if ((whitecursor || magentacursor || greencursor) && (colnum == 20 || colnum == 21)) next;
 
     set_palette(colnum, colour[1], colour[2], colour[3]);
     next;
