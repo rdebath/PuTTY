@@ -586,8 +586,7 @@ void init_ucs(Conf *conf, struct unicode_data *ucsdata)
 	int goodcount = 0;
 	int idx;
 	for (i = 128; i < 256; i++) {
-	    if (DIRECT_CHAR(ucsdata->unitab_line[i]))
-		continue;
+	    /* Impossible: if (DIRECT_CHAR(ucsdata->unitab_line[i])) continue; */
 	    if (DIRECT_FONT(ucsdata->unitab_line[i]))
 		continue;
 	    if (ucsdata->unitab_line[i] == 0xFFFD)
@@ -598,8 +597,7 @@ void init_ucs(Conf *conf, struct unicode_data *ucsdata)
 	}
 	if (goodcount > 64) for (idx = 0; idx < 256; idx++) {
 	    i = ((idx+32) & 0xFF);
-	    if (DIRECT_CHAR(ucsdata->unitab_line[i]))
-		continue;
+	    /* Impossible: if (DIRECT_CHAR(ucsdata->unitab_line[i])) continue; */
 	    if (DIRECT_FONT(ucsdata->unitab_line[i]))
 		continue;
 	    if (ucsdata->unitab_line[i] == 0xFFFD)

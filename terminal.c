@@ -6056,7 +6056,9 @@ static int dimmap[] = { 59,88,28,100,18,90,30,259 };
 	    if (tchar >= 0x10000 && tchar < 0x110000) {
 		ch[ccount++] = (wchar_t) HIGH_SURROGATE_OF(tchar);
 		ch[ccount++] = (wchar_t) LOW_SURROGATE_OF(tchar);
-	    } else
+	    } else if (tchar >= 0x110000)
+		ch[ccount++] = 0xFFFD;
+	    else
 #endif /* PLATFORM_IS_UTF16 */
 	    ch[ccount++] = (wchar_t) tchar;
 

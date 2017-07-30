@@ -3567,14 +3567,6 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
     }
 #endif
 
-    /* Anything left as an original character set is unprintable. */
-    if (DIRECT_CHAR(text[0]) &&
-        (len < 2 || !IS_SURROGATE_PAIR(text[0], text[1]))) {
-	int i;
-	for (i = 0; i < len; i++)
-	    text[i] = 0xFFFD;
-    }
-
     /* OEM CP */
     if ((text[0] & CSET_MASK) == CSET_OEMCP)
 	nfont |= FONT_OEM;
