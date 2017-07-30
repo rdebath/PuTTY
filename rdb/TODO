@@ -1,4 +1,12 @@
 
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+Add option add key file to pagent for putty.
+This is opposite of current 'run a coomand from pagent'.
+Purpose is to allow pinning to taskbar to work correctly and merge putty and pagent icons..
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
 Screen snapshot...
     Pushes a snap of the current screen into the scrollback.
     Might be very useful if it's the alternate screen.
