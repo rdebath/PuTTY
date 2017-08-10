@@ -5870,11 +5870,11 @@ static int lastrun = 0;
 
 	    if (tattr & ATTR_DIM) {
 		/* Dim colours. */
-static int dimmap[] = { 59,88,28,100,18,90,30,259 };
+static int dimmap[] = { 16, 52, 22, 58, 17, 53, 23, 8 };
 		int fg = ((tattr & ATTR_FGMASK) >> ATTR_FGSHIFT);
 		if (fg < 8) fg = dimmap[fg];
 		else if (fg < 16) fg = fg - 8;
-		else fg = 259;
+		else fg = dimmap[7];
 
 		tattr &= ~ATTR_DIM;
 		tattr &= ~ATTR_FGMASK;
