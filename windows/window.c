@@ -3466,21 +3466,26 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
 	if (nbg < 16) nbg |= 8;
 	else if (nbg >= 256) nbg |= 1;
     }
-    if (!pal && truecolour.fg.enabled)
-	fg = RGB(truecolour.fg.r, truecolour.fg.g, truecolour.fg.b);
-    else
+    if (truecolour.fg.enabled) {
+	if (!pal)
+	    fg = RGB(truecolour.fg.r, truecolour.fg.g, truecolour.fg.b);
+	else
+	    fg = PALETTERGB(truecolour.fg.r, truecolour.fg.g, truecolour.fg.b);
+    } else {
 	fg = colours[nfg];
-
-    if (!pal && truecolour.bg.enabled)
-	bg = RGB(truecolour.bg.r, truecolour.bg.g, truecolour.bg.b);
-    else
-	bg = colours[nbg];
-
-    if (!pal && (attr & ATTR_DIM)) {
-        fg = RGB(GetRValue(fg) * 2 / 3,
-                 GetGValue(fg) * 2 / 3,
-                 GetBValue(fg) * 2 / 3);
+	if (attr & ATTR_DIM) {
+	    fg = RGB(GetRValue(fg) * 2 / 3,
+		     GetGValue(fg) * 2 / 3,
+		     GetBValue(fg) * 2 / 3);
+	}
     }
+    if (truecolour.bg.enabled) {
+	if (!pal)
+	    bg = RGB(truecolour.bg.r, truecolour.bg.g, truecolour.bg.b);
+	else
+	    bg = PALETTERGB(truecolour.bg.r, truecolour.bg.g, truecolour.bg.b);
+    } else
+	bg = colours[nbg];
 
     SelectObject(hdc, fonts[nfont]);
     SetTextColor(hdc, fg);
