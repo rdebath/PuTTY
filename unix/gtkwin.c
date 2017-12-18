@@ -3861,6 +3861,7 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
     struct gui_data *inst = dctx->inst;
     int ncombining;
     int nfg, nbg, t, fontid, shadow, rlen, widefactor, bold;
+    int fg_dim = (attr & ATTR_DIM), bg_dim = 0;
     int monochrome =
         gdk_visual_get_depth(gtk_widget_get_visual(inst->area)) == 1;
 
@@ -3882,6 +3883,10 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
 	nfg = nbg;
 	nbg = t;
 
+	t = fg_dim;
+	fg_dim = bg_dim;
+	bg_dim = t;
+
         trgb = truecolour.fg;
         truecolour.fg = truecolour.bg;
         truecolour.bg = trgb;
@@ -3898,7 +3903,7 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
         truecolour.fg = truecolour.bg = optionalrgb_none;
 	nfg = 260;
 	nbg = 261;
-        attr &= ~ATTR_DIM;             /* don't dim the cursor */
+        fg_dim = bg_dim = 0;             /* don't dim the cursor */
     }
 
     fontid = shadow = 0;
@@ -3961,18 +3966,18 @@ void do_text_internal(Context ctx, int x, int y, wchar_t *text, int len,
     }
 
     if (truecolour.bg.enabled)
-	draw_set_colour_rgb(dctx, truecolour.bg, attr & ATTR_DIM);
+	draw_set_colour_rgb(dctx, truecolour.bg, bg_dim);
     else
-	draw_set_colour(dctx, nbg, attr & ATTR_DIM);
+	draw_set_colour(dctx, nbg, bg_dim);
     draw_rectangle(dctx, TRUE,
                    x*inst->font_width+inst->window_border,
                    y*inst->font_height+inst->window_border,
                    rlen*widefactor*inst->font_width, inst->font_height);
 
     if (truecolour.fg.enabled)
-	draw_set_colour_rgb(dctx, truecolour.fg, attr & ATTR_DIM);
+	draw_set_colour_rgb(dctx, truecolour.fg, fg_dim);
     else
-	draw_set_colour(dctx, nfg, attr & ATTR_DIM);
+	draw_set_colour(dctx, nfg, fg_dim);
     if (ncombining > 1) {
         assert(len == 1);
         unifont_draw_combining(&dctx->uctx, inst->fonts[fontid],
