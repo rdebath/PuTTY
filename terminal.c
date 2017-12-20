@@ -3781,7 +3781,7 @@ static void term_out(Terminal *term)
 			seen_disp_event(term);
 			break;
 		      case 'L':       /* IL: insert lines */
-			compatibility(VT102);
+			compatibility2(VT102,SCOANSI);
 			CLAMP(term->esc_args[0], term->rows);
 			if (term->curs.y <= term->marg_b)
 			    scroll(term, term->curs.y, term->marg_b,
@@ -3789,7 +3789,7 @@ static void term_out(Terminal *term)
 			seen_disp_event(term);
 			break;
 		      case 'M':       /* DL: delete lines */
-			compatibility(VT102);
+			compatibility2(VT102,SCOANSI);
 			CLAMP(term->esc_args[0], term->rows);
 			if (term->curs.y <= term->marg_b)
 			    scroll(term, term->curs.y, term->marg_b,
@@ -3799,13 +3799,13 @@ static void term_out(Terminal *term)
 			break;
 		      case '@':       /* ICH: insert chars */
 			/* XXX VTTEST says this is vt220, vt510 manual says vt102 */
-			compatibility(VT102);
+			compatibility2(VT102,SCOANSI);
 			CLAMP(term->esc_args[0], term->cols);
 			insch(term, def(term->esc_args[0], 1));
 			seen_disp_event(term);
 			break;
 		      case 'P':       /* DCH: delete chars */
-			compatibility(VT102);
+			compatibility2(VT102,SCOANSI);
 			CLAMP(term->esc_args[0], term->cols);
 			insch(term, -def(term->esc_args[0], 1));
 			seen_disp_event(term);
@@ -4582,6 +4582,9 @@ static void term_out(Terminal *term)
 			    }
 			    strcat(term->id_string, "c");
 			}
+
+			/* Make sure we have the right sort of AM */
+			term->wrap = (term->wrap?1+!has_compat(VT100):0);
 #if 0
 			/* Is this a good idea ? 
 			 * Well we should do a soft reset at this point ...
