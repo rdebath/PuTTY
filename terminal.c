@@ -109,7 +109,7 @@ static void update_sbar(Terminal *);
 static void deselect(Terminal *);
 static void term_print_finish(Terminal *);
 static void scroll(Terminal *, int, int, int, int);
-static void parse_optionalrgb(optionalrgb *out, unsigned *values);
+static int parse_optionalrgb(optionalrgb *out, unsigned *values);
 #ifdef OPTIMISE_SCROLL
 static void scroll_display(Terminal *, int, int, int);
 #endif /* OPTIMISE_SCROLL */
@@ -4073,9 +4073,12 @@ static void term_out(Terminal *term)
 					}
 				    if (i + 4 < term->esc_nargs &&
 					term->esc_args[i + 1] == 2) {
-					parse_optionalrgb(
-                                            &term->curr_truecolour.fg,
-                                            term->esc_args + (i+2));
+					term->curr_attr &= ~ATTR_FGMASK;
+					term->curr_attr |= (
+					    parse_optionalrgb(
+						&term->curr_truecolour.fg,
+						term->esc_args + (i+2))
+					     << ATTR_FGSHIFT);
 					i += 4;
 				    }
 				    break;
@@ -4092,9 +4095,12 @@ static void term_out(Terminal *term)
 				    }
 				    if (i + 4 < term->esc_nargs &&
 					term->esc_args[i+1] == 2) {
-					parse_optionalrgb(
-                                            &term->curr_truecolour.bg,
-                                            term->esc_args + (i+2));
+					term->curr_attr &= ~ATTR_BGMASK;
+					term->curr_attr |= (
+					    parse_optionalrgb(
+						&term->curr_truecolour.bg,
+						term->esc_args + (i+2))
+					     << ATTR_BGSHIFT);
 					i += 4;
 				    }
 				    break;
@@ -4925,12 +4931,20 @@ static void term_out(Terminal *term)
  * arguments representing a true-colour RGB triple into an
  * optionalrgb.
  */
-static void parse_optionalrgb(optionalrgb *out, unsigned *values)
+static int parse_optionalrgb(optionalrgb *out, unsigned *values)
 {
+    int nr, ng, nb;
+
     out->enabled = TRUE;
     out->r = values[0] < 256 ? values[0] : 0;
     out->g = values[1] < 256 ? values[1] : 0;
     out->b = values[2] < 256 ? values[2] : 0;
+
+    nr = (out->r-36)/40; if (nr == 0) nr = (out->r+47)/95;
+    ng = (out->g-36)/40; if (ng == 0) ng = (out->g+47)/95;
+    nb = (out->b-36)/40; if (nb == 0) nb = (out->b+47)/95;
+
+    return 16 + nb + ng * 6 + nr * 36;
 }
 
 /*
