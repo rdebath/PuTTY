@@ -1,0 +1,29 @@
+#!/bin/sh
+
+set -e
+curl > EastAsianWidth.txt \
+    http://www.unicode.org/Public/UNIDATA/EastAsianWidth.txt
+
+VER=$(head -1 EastAsianWidth.txt | sed 's/^# [A-Za-z]*-\([0-9.]*\).txt/\1/')
+echo "$VER"
+
+[ -f "UNIDATA-$VER/EastAsianWidth.txt" ] && {
+    if cmp EastAsianWidth.txt "UNIDATA-$VER/EastAsianWidth.txt"
+    then
+	echo No update required.
+	rm EastAsianWidth.txt
+	exit
+    fi
+}
+
+mkdir -p "UNIDATA-$VER"
+mkdir -p "UNIDATA-$VER/extracted"
+
+curl > "UNIDATA-$VER"/UnicodeData.txt \
+    http://www.unicode.org/Public/UNIDATA/UnicodeData.txt
+
+curl >  "UNIDATA-$VER"/extracted/DerivedGeneralCategory.txt \
+    http://www.unicode.org/Public/UNIDATA/extracted/DerivedGeneralCategory.txt
+
+mv EastAsianWidth.txt "UNIDATA-$VER"/EastAsianWidth.txt
+
