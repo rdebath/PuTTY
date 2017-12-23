@@ -2154,7 +2154,7 @@ static void scroll(Terminal *term, int topline, int botline, int lines, int sb)
     int olddisptop, shift;
 #endif /* OPTIMISE_SCROLL */
 
-    if (topline != 0 || term->alt_which != 0)
+    if (topline != term->marg_t || term->alt_which != 0)
 	sb = FALSE;
 
 #ifdef OPTIMISE_SCROLL
