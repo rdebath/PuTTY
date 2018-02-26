@@ -4728,6 +4728,7 @@ static void term_out(Terminal *term)
 			term->width_override = term->esc_args[0];
 			break;
 		      case ANSI('p', '"'): /* DECSCL: set compat level */
+		      case ANSI('p', ANSI('!', '"')): /* VT52 disable */
 			/*
 			 * Allow the host to make this emulator a
 			 * 'perfect' VT102. This first appeared in
@@ -4770,6 +4771,12 @@ static void term_out(Terminal *term)
 			    break;
 			  case 42:
 			    term->compatibility_level = TM_SCOANSI;
+			    break;
+			  case 43:
+			    term->compatibility_level = CL_ANSIMIN;
+			    break;
+			  case 44:
+			    term->compatibility_level = 0;
 			    break;
 
 			  case ARG_DEFAULT:
@@ -5134,8 +5141,12 @@ static void term_out(Terminal *term)
 		    term->termstate = VT52_Y1;
 		    break;
 		  case 'Z':
-		    if (term->ldisc)
-			ldisc_send(term->ldisc, "\033/Z", 3, 0);
+		    if (term->ldisc) {
+			if (term->vt52_mode)
+			    ldisc_send(term->ldisc, "\033/Z", 3, 0);
+			else
+			    ldisc_send(term->ldisc, "\033/K", 3, 0);
+		    }
 		    break;
 		  case '=':
 		    term->app_keypad_keys = TRUE;
@@ -5149,6 +5160,14 @@ static void term_out(Terminal *term)
 		     *     emulation.
 		     */
 		    term->vt52_mode = FALSE;
+		    break;
+		  case '[':
+		    if (!term->vt52_mode) {
+			term->termstate = SEEN_CSI;
+			term->esc_nargs = 1;
+			term->esc_args[0] = ARG_DEFAULT;
+			term->esc_query = '!';
+		    }
 		    break;
 #if 0
 		  case '^':
