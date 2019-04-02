@@ -21,7 +21,7 @@ WINTOOLPATH64=x86_64-w64-mingw32-
 # The Cygwin makefile is a proper unix makefile, but the FLAGS to GCC
 # are messed up. So I override the lot.
 WINCFLAGS = -Wall -O2 -std=c90 -fstack-protector -D_WINDOWS -D_NO_OLDNAMES \
-                -I.././ -I../charset/ -I../windows/
+                -DNO_MULTIMON -I.././ -I../charset/ -I../windows/
 
 ifeq ($(wildcard version.h),)
 # For version 0.63
